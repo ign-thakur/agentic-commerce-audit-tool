@@ -1,7 +1,10 @@
 import { AlertCircle } from "lucide-react"
 
 interface IssuesListProps {
-  issues: string[]
+  issues: {
+    text: string
+    severity: "high" | "medium" | "low"
+  }[]
 }
 
 export function IssuesList({ issues }: IssuesListProps) {
@@ -14,7 +17,7 @@ export function IssuesList({ issues }: IssuesListProps) {
           {issues.length} issues
         </span>
       </div>
-      
+
       <ul className="space-y-1">
         {issues.map((issue, index) => (
           <li
@@ -24,7 +27,12 @@ export function IssuesList({ issues }: IssuesListProps) {
             <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-muted text-xs font-medium text-muted-foreground">
               {String(index + 1).padStart(2, '0')}
             </span>
-            <span className="text-sm text-foreground leading-relaxed">{issue}</span>
+            <div className="text-sm text-foreground leading-relaxed">
+              <span className="mr-2 font-semibold uppercase">
+                {issue.severity}
+              </span>
+              {issue.text}
+            </div>
           </li>
         ))}
       </ul>

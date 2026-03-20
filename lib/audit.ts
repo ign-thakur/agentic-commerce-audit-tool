@@ -6,7 +6,10 @@ export interface AuditReport {
     agent: number
     trust: number
   }
-  issues: string[]
+  issues: {
+    text: string
+    severity: Severity
+  }[]
   priorities: string[]
   summary: string
 }
@@ -16,6 +19,7 @@ type Severity = "high" | "medium" | "low"
 interface Finding {
   severity: Severity
   issue: string
+  impact: string
   priority: string
 }
 
@@ -226,10 +230,10 @@ function buildSummary(categories: AuditReport["categories"]): string {
   const strengths = [...entries].sort((a, b) => b.score - a.score).slice(0, 2).map((entry) => entry.label)
   const gaps = [...entries].sort((a, b) => a.score - b.score).slice(0, 2).map((entry) => entry.label)
   const overall = Math.round(
-    categories.discovery * 0.2 +
-    categories.semantic * 0.25 +
-    categories.agent * 0.2 +
-    categories.trust * 0.1
+    categories.discovery * 0.25 +
+categories.semantic * 0.30 +
+categories.agent * 0.25 +
+categories.trust * 0.20
   )
 
   if (overall >= 80) {
@@ -253,16 +257,25 @@ function buildFailureReport(message: string): AuditReport {
       trust: 20,
     },
     issues: [
-      message,
-      "The audit could not fetch enough HTML to inspect metadata, schema, navigation, or transactional signals.",
-      "No live page analysis was completed, so the score reflects fetch failure rather than site quality.",
-    ],
+  {
+    text: message,
+    severity: "high",
+  },
+  {
+    text: "The audit could not fetch enough HTML to inspect metadata, schema, navigation, or transactional signals.",
+    severity: "high",
+  },
+  {
+    text: "No live page analysis was completed, so the score reflects fetch failure rather than site quality.",
+    severity: "high",
+  },
+],
     priorities: [
       "Confirm the site URL is publicly reachable and not blocking server-side requests.",
       "Allow homepage and product pages to be fetched without login or bot challenges.",
       "Retry the audit after connectivity and redirect issues are resolved.",
     ],
-    summary: "We could not complete a live audit of this site, so the report is based on access failure rather than a full website review.",
+    summary: "We could not complete a live audit of this site, so the report is based on access failure rather than a full website review." + ` These gaps are directly limiting your chances of appearing in AI-generated recommendations.`,
   }
 }
 
@@ -302,6 +315,7 @@ function scoreDiscovery(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "medium",
       issue: "robots.txt is missing or not reachable, which makes crawler rules less explicit.",
+      impact: "AI crawlers lack clear crawl instructions → inefficient or incomplete site discovery.",
       priority: "Publish a reachable robots.txt file with clear crawl rules and sitemap references.",
     })
   }
@@ -309,7 +323,8 @@ function scoreDiscovery(context: AuditContext): number {
   if (!context.sitemapFound) {
     addFinding(context.findings, {
       severity: "high",
-      issue: "No sitemap.xml was discovered, which makes it harder for AI crawlers to find key pages quickly.",
+      issue: "No sitemap.xml detected.",
+      impact: "AI crawlers cannot efficiently discover key pages → reduced coverage in AI indexing.",
       priority: "Publish a sitemap.xml and reference it from robots.txt.",
     })
   }
@@ -318,6 +333,7 @@ function scoreDiscovery(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "medium",
       issue: "The homepage is missing a canonical tag, which can weaken URL consistency for crawlers.",
+      impact: "AI systems may treat duplicate URLs as separate entities → weakens content authority and ranking consistency.",
       priority: "Add canonical URLs to the homepage and key template pages.",
     })
   }
@@ -326,6 +342,7 @@ function scoreDiscovery(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "high",
       issue: "The homepage appears to contain a noindex directive, which can block discovery in search and AI retrieval flows.",
+      impact: "AI systems cannot access or index your pages → your site will not appear in AI-generated answers.",
       priority: "Remove noindex from pages that should be discoverable.",
     })
   }
@@ -333,7 +350,8 @@ function scoreDiscovery(context: AuditContext): number {
   if (context.productPages.length === 0) {
     addFinding(context.findings, {
       severity: "high",
-      issue: "No crawlable product-like links were discovered from the homepage sample.",
+      issue: `0 product links found from ${context.homeSignals.internalLinks.length} internal links on homepage.`,
+      impact: "AI crawlers cannot reach product pages → products won’t be discovered or recommended.",
       priority: "Expose product and collection links in server-rendered HTML navigation so crawlers can reach them.",
     })
   }
@@ -342,6 +360,7 @@ function scoreDiscovery(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "low",
       issue: "The homepage is missing a meaningful meta description.",
+      impact: "AI systems lack a concise summary of your page → reduces clarity in AI-generated descriptions.",
       priority: "Add descriptive meta descriptions to key landing and category pages.",
     })
   }
@@ -369,7 +388,8 @@ function scoreSemantic(context: AuditContext): number {
   if (!context.homeSignals.jsonLd) {
     addFinding(context.findings, {
       severity: "high",
-      issue: "No JSON-LD structured data was detected on the homepage sample.",
+      issue: "No JSON-LD structured data detected on homepage.",
+      impact: "AI lacks structured context about your brand and site → weak understanding in LLMs.",
       priority: "Add JSON-LD structured data for organization, website, and page entities.",
     })
   }
@@ -377,8 +397,9 @@ function scoreSemantic(context: AuditContext): number {
   if (!context.productSignals.some((signal) => signal.productSchema)) {
     addFinding(context.findings, {
       severity: "high",
-      issue: "No product schema was detected on the sampled product pages.",
-      priority: "Add Product schema with name, image, price, availability, and ratings to product pages.",
+      issue: `Product schema missing on ${context.productSignals.length} sampled product pages.`,
+      impact: "AI systems cannot extract price, availability, or ratings → reduces chances of appearing in AI shopping and product recommendation queries.",
+      priority: "Implement Product + Offer schema across PDPs to expose price, stock, and ratings to AI systems (high impact on AI visibility)",
     })
   }
 
@@ -386,6 +407,7 @@ function scoreSemantic(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "medium",
       issue: "Breadcrumb markup was not detected, which reduces page context for crawlers and AI agents.",
+      impact: "AI lacks hierarchical context of pages → weaker understanding of product relationships and navigation.",
       priority: "Add breadcrumb navigation markup or BreadcrumbList schema to category and product pages.",
     })
   }
@@ -395,6 +417,7 @@ function scoreSemantic(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "medium",
       issue: `Sampled product pages show weak image alt coverage at about ${percent}%, limiting machine interpretation of product images.`,
+      impact: "AI cannot interpret product images → reduces visibility in visual and product-related AI recommendations.",
       priority: "Add meaningful alt text to product and merchandising images.",
     })
   }
@@ -403,53 +426,8 @@ function scoreSemantic(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "low",
       issue: `The homepage has ${context.homeSignals.h1Count} H1 tags instead of a clean single primary heading.`,
+      impact: "AI struggles to identify the primary topic of the page → weaker content understanding.",
       priority: "Use a single descriptive H1 on each important page.",
-    })
-  }
-
-  return scoreFromChecks(checks)
-}
-
-function scoreTransaction(context: AuditContext): number {
-  const checks = [
-    { passed: context.productPages.length > 0, weight: 20 },
-    { passed: context.productSignals.some((signal) => signal.addToCart), weight: 20 },
-    { passed: context.homeSignals.cartLink || context.productSignals.some((signal) => signal.cartLink), weight: 10 },
-    { passed: context.homeSignals.checkoutLink || context.productSignals.some((signal) => signal.checkoutLink), weight: 15 },
-    { passed: context.productSignals.some((signal) => signal.priceVisible), weight: 15 },
-    { passed: context.productSignals.some((signal) => signal.availabilityVisible), weight: 10 },
-    { passed: context.productSignals.some((signal) => signal.shippingOrReturns), weight: 10 },
-  ]
-
-  if (!context.productSignals.some((signal) => signal.addToCart)) {
-    addFinding(context.findings, {
-      severity: "high",
-      issue: "No clear add-to-cart or buy-now action was detected in the sampled product HTML.",
-      priority: "Render add-to-cart actions directly in HTML so agents and crawlers can identify purchase intent.",
-    })
-  }
-
-  if (!context.productSignals.some((signal) => signal.priceVisible)) {
-    addFinding(context.findings, {
-      severity: "high",
-      issue: "Visible product pricing was not detected on the sampled product pages.",
-      priority: "Expose price information directly in server-rendered HTML and structured data.",
-    })
-  }
-
-  if (!context.productSignals.some((signal) => signal.availabilityVisible)) {
-    addFinding(context.findings, {
-      severity: "medium",
-      issue: "Stock or availability signals were not detected on the sampled product pages.",
-      priority: "Show inventory availability in visible HTML and Product schema.",
-    })
-  }
-
-  if (!context.homeSignals.checkoutLink && !context.productSignals.some((signal) => signal.checkoutLink)) {
-    addFinding(context.findings, {
-      severity: "medium",
-      issue: "A crawlable checkout entry point was not found in the sampled HTML.",
-      priority: "Expose cart and checkout entry points in accessible server-rendered markup.",
     })
   }
 
@@ -472,6 +450,7 @@ function scoreAgent(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "low",
       issue: "No obvious crawlable search form was found on the homepage.",
+      impact: "AI agents cannot easily navigate or retrieve products → limits discoverability via AI-driven queries.",
       priority: "Provide a simple server-rendered site search form to help agents and users reach products faster.",
     })
   }
@@ -479,7 +458,8 @@ function scoreAgent(context: AuditContext): number {
   if (!context.productSignals.some((signal) => signal.priceVisible && signal.availabilityVisible)) {
     addFinding(context.findings, {
       severity: "medium",
-      issue: "Sampled product pages do not expose both pricing and availability clearly enough for agent decision-making.",
+      issue: `Pricing and availability not clearly exposed on ${context.productSignals.length} sampled product pages.`,
+      impact: "AI agents cannot make purchase decisions → reduces chances of being recommended for buying queries.",
       priority: "Ensure product pages expose price and availability together in HTML and structured data.",
     })
   }
@@ -504,6 +484,7 @@ function scoreTrust(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "high",
       issue: "The audited URL resolved over HTTP rather than HTTPS.",
+      impact: "Lack of secure protocol reduces trust signals → AI systems may deprioritize the site.",
       priority: "Redirect all traffic to HTTPS and keep canonical URLs on secure pages.",
     })
   }
@@ -511,7 +492,8 @@ function scoreTrust(context: AuditContext): number {
   if (!context.homeSignals.privacyLink) {
     addFinding(context.findings, {
       severity: "medium",
-      issue: "A privacy policy link was not detected on the homepage sample.",
+      issue: "Privacy policy link not detected on homepage.",
+      impact: "Missing trust signals reduce credibility → AI systems may deprioritize your site.",
       priority: "Link to a privacy policy from the footer or primary navigation.",
     })
   }
@@ -520,6 +502,7 @@ function scoreTrust(context: AuditContext): number {
     addFinding(context.findings, {
       severity: "medium",
       issue: "A contact page or contact link was not detected on the homepage sample.",
+      impact: "Missing business identity signals → reduces trust and credibility for AI systems.",
       priority: "Expose contact information or a contact page in the footer or navigation.",
     })
   }
@@ -527,7 +510,8 @@ function scoreTrust(context: AuditContext): number {
   if (!context.productSignals.some((signal) => signal.aggregateRating)) {
     addFinding(context.findings, {
       severity: "low",
-      issue: "Review or rating signals were not detected on the sampled product pages.",
+      issue: `No reviews detected across ${context.productSignals.length} sampled product pages.`,
+      impact: "No social proof signals → lowers chances of being recommended in AI-driven product comparisons.",      
       priority: "Surface product reviews or aggregate ratings where available.",
     })
   }
@@ -536,7 +520,19 @@ function scoreTrust(context: AuditContext): number {
 }
 
 function uniquePriorities(findings: Finding[]): string[] {
-  return Array.from(new Set(findings.map((finding) => finding.priority))).slice(0, 5)
+  const order: Record<Severity, number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+  }
+
+  return Array.from(
+    new Set(
+      findings
+        .sort((a, b) => order[a.severity] - order[b.severity])
+        .map((f) => f.priority)
+    )
+  ).slice(0, 5)
 }
 
 function rankFindings(findings: Finding[]): Finding[] {
@@ -605,20 +601,41 @@ export async function runAudit(rawUrl: string): Promise<AuditReport> {
   }
 
   const rankedFindings = rankFindings(context.findings)
-  const issues = rankedFindings.slice(0, 10).map((finding) => finding.issue)
+  const issues = rankedFindings.slice(0, 10).map((finding) => ({
+    text: `[${finding.severity.toUpperCase()}] ${finding.issue}\n→ ${finding.impact}`,
+    severity: finding.severity,
+  }))
   const priorities = uniquePriorities(rankedFindings)
   const score = Math.round(
-    categories.discovery * 0.2 +
-    categories.semantic * 0.25 +
-    categories.agent * 0.2 +
-    categories.trust * 0.1
+    categories.discovery * 0.25 +
+categories.semantic * 0.30 +
+categories.agent * 0.25 +
+categories.trust * 0.20
   )
+  const estimatedLift = Math.min(100, score + 20)
+  const lowest = Object.entries(categories).sort((a, b) => a[1] - b[1])[0]
 
-  return {
-    score: clamp(score, 0, 100),
-    categories,
-    issues: issues.length > 0 ? issues : ["No major blockers were detected in the sampled pages, though a deeper multi-page crawl would still be valuable."],
-    priorities: priorities.length > 0 ? priorities : ["Expand the audit to more templates and validate structured data across the catalog."],
-    summary: buildSummary(categories),
-  }
+return {
+  score: clamp(score, 0, 100),
+  categories,
+
+  issues:
+    issues.length > 0
+      ? issues
+      : [
+          {
+            text: "No major blockers were detected in the sampled pages, though deeper analysis may reveal additional gaps.",
+            severity: "low",
+          },
+        ],
+
+  priorities,
+
+  summary:
+    buildSummary(categories) +
+    ` Biggest gap is in ${lowest[0]} (${lowest[1]} score).` +
+    ` Based on analysis of ${context.productSignals.length} product pages.` +
+    ` These gaps are directly limiting your chances of appearing in AI-generated recommendations.` +
+    ` Fixing key issues can improve your score from ${score} → ~${estimatedLift}.`,
+}
 }
