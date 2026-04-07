@@ -25,7 +25,7 @@ export function ReportCTA() {
         </div>
       </div>
       
-      <a href="https://www.greenhonchos.com/" target="_blank" rel="noopener noreferrer">
+      <a href="https://www.greenhonchos.com/digital-commerce/performance-marketing-services#think-digital" target="_blank" rel="noopener noreferrer">
         <Button size="lg" className="bg-background text-primary hover:bg-background/90 whitespace-nowrap shadow-lg">
           Get Started
           <ArrowRight className="ml-2 h-4 w-4" />

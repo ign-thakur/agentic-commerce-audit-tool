@@ -13,11 +13,6 @@ export function Features() {
       description: "Assess your site's schema markup, metadata, and content structure for AI comprehension and accurate product representation.",
     },
     {
-      icon: CreditCard,
-      title: "Transaction Readiness",
-      description: "Analyze your checkout flow and payment systems for AI-assisted purchasing and automated transaction capabilities.",
-    },
-    {
       icon: Bot,
       title: "Agent Compatibility",
       description: "Test compatibility with popular AI shopping agents, voice assistants, and autonomous purchasing systems.",
