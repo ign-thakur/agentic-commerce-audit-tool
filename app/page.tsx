@@ -16,6 +16,21 @@ export default function LandingPage() {
 
   const handleAnalyze = async (url: string, email: string) => {
     setIsLoading(true)
+
+    try {
+      await fetch("/api/lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          website: url,
+          source: "homepage",
+        }),
+      })
+    } catch (error) {
+      console.error("Lead capture request failed", error)
+    }
+
     // Store the URL and email in sessionStorage for the loading page
     sessionStorage.setItem("auditUrl", url)
     sessionStorage.setItem("auditEmail", email)
