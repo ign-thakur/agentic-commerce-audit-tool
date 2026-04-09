@@ -18,7 +18,7 @@ export function HowItWorks() {
       icon: FileCheck,
       step: "03",
       title: "Report",
-      description: "Receive a comprehensive report with your score, issues found, and a roadmap to improve.",
+      description: "Receive a comprehensive report with your score, issues found, and a phase wise plan of action.",
     },
   ]
 

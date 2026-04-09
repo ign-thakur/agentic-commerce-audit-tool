@@ -147,9 +147,6 @@ export default function LoadingPage() {
             className="h-9 w-auto brightness-0 invert"
             unoptimized
           />
-          <div className="rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-white/70">
-            Estimated time: {Math.round(totalDurationMs / 1000)}s
-          </div>
         </div>
 
         <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
