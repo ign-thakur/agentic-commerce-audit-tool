@@ -8,7 +8,10 @@ export function Priorities({ priorities }: PrioritiesProps) {
   return (
     <div className="rounded-2xl bg-background border border-border p-8 shadow-sm">
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Top Priorities</h2>
+        <div>
+          <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Top Priorities</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">The most important areas to address first.</p>
+        </div>
         <span className="flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
           {priorities.length} actions
         </span>

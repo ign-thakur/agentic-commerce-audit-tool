@@ -4,7 +4,7 @@ import { runAudit } from "@/lib/audit"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { url } = body
+    const { url, signals } = body
 
     if (!url) {
       return NextResponse.json(
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const report = await runAudit(url)
+    const report = await runAudit({ url, signals })
 
     return NextResponse.json(report)
   } catch (error) {
