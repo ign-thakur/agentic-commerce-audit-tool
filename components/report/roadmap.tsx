@@ -9,7 +9,7 @@ const phaseTitles = {
   "LLMs.txt": "Fix What AI Cannot Find",
   "Markdown Response": "Improve What AI Can Explain",
   "AI Integrations": "Turn Platform Potential Into Real Capability",
-  "MCP / Agent Connectivity": "Make The Buying Journey Easier To Follow",
+  "Agentic Commerce Readiness": "Make Autonomous Commerce Actions Work Reliably",
   "GEO / Smart JSON-LD / Schema": "Fix What AI Cannot Trust",
 } satisfies Record<AuditCategory["name"], string>
 
@@ -29,10 +29,10 @@ const actionMap = {
     "Prioritize high-impact capabilities",
     "Close the gap between platform potential and live readiness",
   ],
-  "MCP / Agent Connectivity": [
-    "Clarify purchase signals",
-    "Reduce commerce flow friction",
-    "Improve actionability for future AI journeys",
+  "Agentic Commerce Readiness": [
+    "Expose explicit agent tools and workflows",
+    "Strengthen authentication and session continuity",
+    "Improve transactional actionability for autonomous commerce journeys",
   ],
   "GEO / Smart JSON-LD / Schema": [
     "Improve structured product trust",

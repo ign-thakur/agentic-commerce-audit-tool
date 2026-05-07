@@ -12,7 +12,7 @@ const iconMap = {
   "LLMs.txt": FileText,
   "Markdown Response": Sparkles,
   "AI Integrations": Network,
-  "MCP / Agent Connectivity": Bot,
+  "Agentic Commerce Readiness": Bot,
   "GEO / Smart JSON-LD / Schema": Radar,
 } satisfies Record<AuditCategory["name"], ComponentType<{ className?: string }>>
 

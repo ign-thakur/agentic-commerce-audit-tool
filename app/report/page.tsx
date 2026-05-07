@@ -49,16 +49,16 @@ const defaultReport: AuditReport = {
         "The platform may support AI commerce workflows, but actual readiness depends on what has really been implemented.",
     },
     {
-      name: "MCP / Agent Connectivity",
+      name: "Agentic Commerce Readiness",
       score: 52,
       status: "moderate",
       findings: [
-        "Cart and transaction signals are only partially visible.",
-        "Machine-readable actionability looks incomplete.",
-        "No direct MCP or agent protocol support is confirmed.",
+        "Authenticated agent workflows are only partially visible.",
+        "Tool discovery and actionability still look incomplete.",
+        "No strong autonomous agent operating surface is confirmed yet.",
       ],
       impact:
-        "Agents may understand parts of the purchase path, but reliable end-to-end actionability is still limited.",
+        "Autonomous systems may retrieve some commerce data, but reliable multi-step execution and context continuity remain limited.",
     },
     {
       name: "GEO / Smart JSON-LD / Schema",
@@ -74,7 +74,7 @@ const defaultReport: AuditReport = {
     },
   ],
   summary:
-    "Your store is giving AI systems some usable signals, but the experience is still uneven. GEO / Smart JSON-LD / Schema is a positive foundation, while MCP / Agent Connectivity and LLMs.txt are making it harder for AI platforms to trust, recommend, and act on your catalog consistently.",
+    "Your store is giving AI systems some usable signals, but the experience is still uneven. GEO / Smart JSON-LD / Schema is a positive foundation, while Agentic Commerce Readiness and LLMs.txt are making it harder for AI platforms to trust, recommend, and act on your catalog consistently.",
   priorities: [
     "Make price, availability, and core product data easier for AI systems to trust.",
     "Improve product content so AI can understand products with more confidence.",

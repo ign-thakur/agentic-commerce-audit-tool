@@ -121,7 +121,7 @@ What it does:
   - `LLMs.txt`
   - `Markdown Response`
   - `AI Integrations`
-  - `MCP / Agent Connectivity`
+- `Agentic Commerce Readiness`
   - `GEO / Smart JSON-LD / Schema`
 - builds the final report object:
   - `score`
