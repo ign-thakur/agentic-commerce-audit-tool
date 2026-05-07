@@ -7,6 +7,7 @@ interface RoadmapProps {
 
 const phaseTitles = {
   "LLMs.txt": "Fix What AI Cannot Find",
+  "AI Documentation": "Publish What Agents Can Read",
   "Markdown Response": "Improve What AI Can Explain",
   "AI Integrations": "Turn Platform Potential Into Real Capability",
   "Agentic Commerce Readiness": "Make Autonomous Commerce Actions Work Reliably",
@@ -18,6 +19,11 @@ const actionMap = {
     "Improve catalog discoverability signals",
     "Strengthen product URL visibility",
     "Reduce crawl friction",
+  ],
+  "AI Documentation": [
+    "Publish dedicated markdown docs for agents",
+    "Add API, workflow, and tool references",
+    "Clarify usage guidance for AI systems",
   ],
   "Markdown Response": [
     "Improve product content quality",

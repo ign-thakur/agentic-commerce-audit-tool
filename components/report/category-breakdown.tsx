@@ -1,7 +1,7 @@
 "use client"
 
 import type { ComponentType } from "react"
-import { Bot, FileText, Network, Radar, Sparkles } from "lucide-react"
+import { Bot, FileText, Network, Radar, ScrollText, Sparkles } from "lucide-react"
 import type { AuditCategory } from "@/lib/audit"
 
 interface CategoryBreakdownProps {
@@ -10,6 +10,7 @@ interface CategoryBreakdownProps {
 
 const iconMap = {
   "LLMs.txt": FileText,
+  "AI Documentation": ScrollText,
   "Markdown Response": Sparkles,
   "AI Integrations": Network,
   "Agentic Commerce Readiness": Bot,
@@ -37,7 +38,7 @@ export function CategoryBreakdown({ categories }: CategoryBreakdownProps) {
     <div className="rounded-2xl border border-border bg-background p-8 shadow-sm">
       <div className="mb-6">
         <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-          Detailed Breakdown
+          Breakdown
         </h2>
       </div>
 

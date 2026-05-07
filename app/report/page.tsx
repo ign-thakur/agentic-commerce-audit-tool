@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { CategoryBreakdown } from "@/components/report/category-breakdown"
-import { Priorities } from "@/components/report/priorities"
 import { ReportHeader } from "@/components/report/report-header"
 import { ReportCTA } from "@/components/report/report-cta"
 import { ScoreCard } from "@/components/report/score-card"
@@ -23,6 +22,18 @@ const defaultReport: AuditReport = {
       ],
       impact:
         "If crawl signals are incomplete, AI systems will miss parts of the catalog and produce uneven product coverage.",
+    },
+    {
+      name: "AI Documentation",
+      score: 46,
+      status: "moderate",
+      findings: [
+        "Supplemental markdown documentation may exist, but coverage is still uneven.",
+        "Some AI-facing guidance appears available for agents and workflows.",
+        "Documentation quality is promising, but it is not yet comprehensive.",
+      ],
+      impact:
+        "Machine-readable documentation helps agents understand workflows, APIs, and preferred resources beyond storefront content alone.",
     },
     {
       name: "Markdown Response",
@@ -127,10 +138,6 @@ export default function ReportPage() {
 
         <div className="mb-12">
           <CategoryBreakdown categories={report.categories} />
-        </div>
-
-        <div className="mb-12">
-          <Priorities priorities={report.priorities} />
         </div>
 
         <ReportCTA weakestCategories={blockers.slice(0, 2)} />
