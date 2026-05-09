@@ -119,7 +119,7 @@ What it does:
   - platform inference
 - scores the 5 audit categories:
   - `LLMs.txt`
-  - `Markdown Response`
+  - `AI Content Quality`
   - `AI Integrations`
 - `Agentic Commerce Readiness`
   - `GEO / Smart JSON-LD / Schema`

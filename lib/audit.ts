@@ -14,7 +14,17 @@ export interface AuditCategory {
   impact: string
 }
 
+export type AuditPageType = "homepage" | "pdp" | "category" | "unknown"
+
 export interface AuditSignals {
+  fetchBlockedDetected: boolean
+  pageType: AuditPageType
+  homepageSemanticBaseline: number
+  homepageHasOrganizationSchema: boolean
+  homepageHasWebsiteSchema: boolean
+  homepageHasSearchAction: boolean
+  homepageHasBreadcrumbs: boolean
+  homepageHasCanonical: boolean
   sitemapFound: boolean
   robotsFound: boolean
   productPagesCount: number
@@ -169,6 +179,9 @@ interface JsonLdEntity {
 interface JsonLdExtractionResult {
   entities: JsonLdEntity[]
   malformedCount: number
+  scriptCount: number
+  rawScripts: string[]
+  allNodes: JsonLdRecord[]
 }
 
 interface EntityGraphResult {
@@ -217,11 +230,11 @@ function getStringValues(value: JsonLdValue | undefined): string[] {
   return []
 }
 
-function getFirstString(value: JsonLdValue | undefined) {
+function getFirstString(value: JsonLdValue | undefined): string {
   return getStringValues(value)[0] ?? ""
 }
 
-function hasMeaningfulValue(value: JsonLdValue | undefined) {
+function hasMeaningfulValue(value: JsonLdValue | undefined): boolean {
   if (typeof value === "string") return value.trim().length > 0
   if (typeof value === "number" || typeof value === "boolean") return true
   if (Array.isArray(value)) return value.some((entry) => hasMeaningfulValue(entry))
@@ -229,8 +242,18 @@ function hasMeaningfulValue(value: JsonLdValue | undefined) {
   return false
 }
 
+function normalizeSchemaType(raw: string): string {
+  // Strip full schema.org URL prefix so "http://schema.org/Product" → "product"
+  // matches the same as the short form "Product"
+  return raw
+    .replace(/^https?:\/\/schema\.org\//i, "")
+    .replace(/^https?:\/\/schema\.org#/i, "")
+    .toLowerCase()
+    .trim()
+}
+
 function getEntityTypes(value: JsonLdValue | undefined) {
-  return [...new Set(getStringValues(value).map((type) => type.toLowerCase()))]
+  return [...new Set(getStringValues(value).map(normalizeSchemaType).filter(Boolean))]
 }
 
 function entityHasType(entity: JsonLdEntity, type: string) {
@@ -276,15 +299,21 @@ function collectJsonLdEntities(
   value: JsonLdValue,
   entities: JsonLdEntity[],
   seen: Set<JsonLdRecord>,
-  keyPrefix: string
+  keyPrefix: string,
+  allNodes: JsonLdRecord[]
 ) {
   if (Array.isArray(value)) {
-    value.forEach((entry, index) => collectJsonLdEntities(entry, entities, seen, `${keyPrefix}:${index}`))
+    value.forEach((entry, index) =>
+      collectJsonLdEntities(entry, entities, seen, `${keyPrefix}:${index}`, allNodes)
+    )
     return
   }
 
   if (!isRecord(value) || seen.has(value)) return
   seen.add(value)
+
+  // Collect every visited record so callers can inspect the full flattened tree
+  allNodes.push(value)
 
   const types = getEntityTypes(value["@type"])
   if (types.length > 0) {
@@ -296,24 +325,27 @@ function collectJsonLdEntities(
   }
 
   if (Array.isArray(value["@graph"])) {
-    collectJsonLdEntities(value["@graph"], entities, seen, `${keyPrefix}:graph`)
+    collectJsonLdEntities(value["@graph"], entities, seen, `${keyPrefix}:graph`, allNodes)
   }
 
   for (const [field, nestedValue] of Object.entries(value)) {
     if (field === "@graph") continue
     if (Array.isArray(nestedValue) || isRecord(nestedValue)) {
-      collectJsonLdEntities(nestedValue, entities, seen, `${keyPrefix}:${field}`)
+      collectJsonLdEntities(nestedValue, entities, seen, `${keyPrefix}:${field}`, allNodes)
     }
   }
 }
 
 function extractJsonLd(html: string): JsonLdExtractionResult {
   const entities: JsonLdEntity[] = []
+  const allNodes: JsonLdRecord[] = []
+  const rawScripts: string[] = []
   let malformedCount = 0
   const scripts = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)]
 
   for (let index = 0; index < scripts.length; index += 1) {
     const payload = scripts[index]?.[1] ?? ""
+    rawScripts.push(payload)
     const parsed = parseJsonLdPayload(payload)
 
     if (!parsed) {
@@ -321,10 +353,10 @@ function extractJsonLd(html: string): JsonLdExtractionResult {
       continue
     }
 
-    collectJsonLdEntities(parsed, entities, new Set<JsonLdRecord>(), `jsonld:${index}`)
+    collectJsonLdEntities(parsed, entities, new Set<JsonLdRecord>(), `jsonld:${index}`, allNodes)
   }
 
-  return { entities, malformedCount }
+  return { entities, malformedCount, scriptCount: scripts.length, rawScripts, allNodes }
 }
 
 function extractNumericValues(value: JsonLdValue | undefined): number[] {
@@ -470,7 +502,7 @@ function analyzeSemanticCommercePage(
   merchantSignals: { merchantTrustScore: number; searchDiscoveryScore: number }
 ): SemanticPageSignals {
   const normalized = page.toLowerCase()
-  const { entities, malformedCount } = extractJsonLd(page)
+  const { entities, malformedCount, scriptCount, rawScripts, allNodes } = extractJsonLd(page)
   const productEntities = getEntitiesByType(entities, "product")
   const offerEntities = [
     ...getEntitiesByType(entities, "offer"),
@@ -482,6 +514,36 @@ function analyzeSemanticCommercePage(
       }))
     ),
   ]
+
+  // ── JSON-LD debug ─────────────────────────────────────────────────────────
+  console.log("JSONLD_SCRIPTS", scriptCount)
+  rawScripts.forEach((s, i) => {
+    console.log(`SCRIPT_${i}`, s.slice(0, 1000))
+  })
+
+  console.log("FLATTENED_NODES", allNodes.length)
+  allNodes.forEach((n, i) => {
+    console.log(`NODE_TYPE ${i}`, n["@type"])
+  })
+
+  console.log(
+    "PARSED_PRODUCT_SCHEMA:",
+    JSON.stringify(
+      productEntities.map((e) => e.raw),
+      null,
+      2
+    )
+  )
+  console.log(
+    "PARSED_OFFERS:",
+    JSON.stringify(
+      offerEntities.map((e) => e.raw),
+      null,
+      2
+    )
+  )
+  // ─────────────────────────────────────────────────────────────────────────
+
   const organizationEntities = getEntitiesByType(entities, "organization")
   const websiteEntities = getEntitiesByType(entities, "website")
   const breadcrumbEntities = getEntitiesByType(entities, "breadcrumblist")
@@ -788,7 +850,36 @@ function analyzeMerchantTrustLayer(homepage: string, homepageUrl: string) {
   return {
     merchantTrustScore: clampCoverage(merchantTrustScore + (canonicalUrl ? 0.08 : 0)),
     searchDiscoveryScore,
+    homepageHasOrganizationSchema: organizationEntities.length > 0,
+    homepageHasWebsiteSchema: websiteEntities.length > 0,
+    homepageHasSearchAction: searchActionEntities.length > 0,
+    homepageHasBreadcrumbs: breadcrumbEntities.length > 0,
+    homepageHasCanonical: Boolean(canonicalUrl),
   }
+}
+
+function computeHomepageSemanticBaseline(input: {
+  homepageHasOrganizationSchema: boolean
+  homepageHasWebsiteSchema: boolean
+  homepageHasSearchAction: boolean
+  homepageHasBreadcrumbs: boolean
+  homepageHasCanonical: boolean
+  merchantTrustScore: number
+  searchDiscoveryScore: number
+  sitemapFound: boolean
+  robotsFound: boolean
+}) {
+  return clampCoverage(
+    (input.homepageHasOrganizationSchema ? 0.18 : 0) +
+    (input.homepageHasWebsiteSchema ? 0.14 : 0) +
+    (input.homepageHasSearchAction ? 0.16 : 0) +
+    (input.homepageHasBreadcrumbs ? 0.10 : 0) +
+    (input.homepageHasCanonical ? 0.08 : 0) +
+    input.merchantTrustScore * 0.12 +
+    input.searchDiscoveryScore * 0.12 +
+    (input.sitemapFound ? 0.06 : 0) +
+    (input.robotsFound ? 0.04 : 0)
+  )
 }
 
 function classify(score: number): AuditStatus {
@@ -810,6 +901,42 @@ function toAbsoluteUrl(baseUrl: string, href: string) {
   }
 }
 
+function detectPageType(url: string): AuditPageType {
+  try {
+    const parsed = new URL(url)
+    const path = parsed.pathname.toLowerCase().replace(/\/+$/, "")
+
+    if (path === "" || path === "/") return "homepage"
+
+    if (
+      /\/(product|products|item|items|p|dp|sku|prd)\/[^/]+/i.test(path) ||
+      /-p-\d+/i.test(path) ||
+      /\/[^/]+-p\/[^/]+/i.test(path)
+    ) {
+      return "pdp"
+    }
+
+    if (
+      /\/(collections?|categor(?:y|ies)|c|shop|catalog|department|browse|range)\b/i.test(path)
+    ) {
+      return "category"
+    }
+
+    // Shopify custom routes, localized slugs, and clean slug-based PDPs that
+    // don't contain a canonical /product(s)/ segment in position 1.
+    if (
+      /\/products?\//i.test(path) ||
+      /\/collections\/.*\/products?\//i.test(path)
+    ) {
+      return "pdp"
+    }
+
+    return "unknown"
+  } catch {
+    return "unknown"
+  }
+}
+
 function detectPlatform(html: string): AuditSignals["detectedPlatform"] {
   const normalized = html.toLowerCase()
 
@@ -820,13 +947,64 @@ function detectPlatform(html: string): AuditSignals["detectedPlatform"] {
   return "custom"
 }
 
+function inferPlatformFromSignals(input: {
+  homepage: string
+  networkRequestUrls: string[]
+  apiEndpointUrls: string[]
+}): AuditSignals["detectedPlatform"] {
+  const homepagePlatform = detectPlatform(input.homepage)
+  if (homepagePlatform !== "custom") return homepagePlatform
+
+  const urls = [...input.networkRequestUrls, ...input.apiEndpointUrls].map((url) => url.toLowerCase())
+  const joined = urls.join("\n")
+
+  // Shopify often hides obvious strings in HTML, but storefront endpoints leak in network requests.
+  const looksLikeShopify =
+    joined.includes("cdn.shopify.com") ||
+    joined.includes("myshopify.com") ||
+    /\/cart\.js(\b|$)/i.test(joined) ||
+    /\/cart\/add(\b|$)/i.test(joined) ||
+    /\/checkouts?\b/i.test(joined) ||
+    joined.includes("storefrontapi") ||
+    joined.includes("/api/") && joined.includes("shopify")
+
+  if (looksLikeShopify) return "shopify"
+
+  const looksLikeWoo =
+    urls.some((url) => url.includes("wp-json")) ||
+    urls.some((url) => url.includes("wp-content"))
+
+  if (looksLikeWoo) return "woocommerce"
+
+  const looksLikeMagento =
+    urls.some((url) => url.includes("mage/")) ||
+    urls.some((url) => url.includes("magento"))
+
+  if (looksLikeMagento) return "magento"
+
+  return "custom"
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 async function fetchText(url: string) {
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
-        "User-Agent": "AuditTool/1.0",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
       },
-    })
+    }, 8000)
 
     if (!response.ok) {
       return null
@@ -841,12 +1019,14 @@ async function fetchText(url: string) {
 async function probeEndpoint(url: string) {
   try {
     const startedAt = Date.now()
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
-        "User-Agent": "AuditTool/1.0",
-        Accept: "application/json, text/plain, */*",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,text/plain;q=0.8,*/*;q=0.7",
       },
-    })
+    }, 8000)
 
     const contentType = response.headers.get("content-type")?.toLowerCase() ?? ""
     const body = await response.text().catch(() => "")
@@ -868,18 +1048,71 @@ async function probeEndpoint(url: string) {
 function hasAcceptedLlmsContentType(contentType: string) {
   return (
     contentType.includes("text/plain") ||
+    contentType.includes("text/html") ||
     contentType.includes("text/markdown") ||
     contentType.includes("text/x-markdown") ||
     contentType.includes("application/markdown")
   )
 }
 
+function looksLikeHtml(body: string) {
+  return /<html[\s>]|<body[\s>]|<!doctype html|<head[\s>]|<h[1-6][\s>]|<li[\s>]|<a\s+[^>]*href=/i.test(body)
+}
+
+function stripHtml(html: string) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<\/(h[1-6]|p|div|section|article|li|ul|ol|br)\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+function extractLinksFromGuidanceBody(body: string) {
+  const urls = new Set<string>()
+
+  // Markdown links: [text](url)
+  for (const match of body.matchAll(/\[[^\]]+\]\((https?:\/\/[^)\s]+|\/[^)\s]*)\)/g)) {
+    const url = (match[1] ?? "").trim()
+    if (url) urls.add(url)
+  }
+
+  // HTML links: href="..."
+  for (const match of body.matchAll(/href\s*=\s*["']([^"']+)["']/gi)) {
+    const url = (match[1] ?? "").trim()
+    if (url) urls.add(url)
+  }
+
+  // Bare URLs
+  for (const match of body.matchAll(/\bhttps?:\/\/[^\s<>"')\]]+/gi)) {
+    const url = (match[0] ?? "").trim()
+    if (url) urls.add(url)
+  }
+
+  // Root-relative endpoints that often appear in guidance files
+  for (const match of body.matchAll(/(^|[\s"'(])((?:\/\.well-known\/[^\s"'()<>]+)|(?:\/(?:mcp|api\/mcp|agents\.md|llms(?:-full)?\.txt|sitemap\.xml|robots\.txt|api\/[^\s"'()<>]+)))(?=$|[\s"'()<>\]])/gim)) {
+    const url = (match[2] ?? "").trim()
+    if (url) urls.add(url)
+  }
+
+  return [...urls]
+}
+
 function isHomepageLikeUrl(candidateUrl: string, expectedPath: string) {
   try {
     const url = new URL(candidateUrl)
     const pathname = url.pathname.replace(/\/+$/, "") || "/"
-    const normalizedExpectedPath = expectedPath.replace(/\/+$/, "")
-    return pathname === "/" || pathname === "" || pathname === normalizedExpectedPath
+    // This check is used to detect endpoint probes that silently landed on the
+    // homepage shell. Do NOT treat expected endpoint paths as homepage-like.
+    // Otherwise, host/protocol redirects (e.g. non-www -> www) falsely mark
+    // valid /llms.txt or /agents.md responses as homepage redirects.
+    void expectedPath
+    return pathname === "/" || pathname === ""
   } catch {
     return false
   }
@@ -894,12 +1127,12 @@ function getLlmsSectionQuality(assessment: {
   hasAiReadableReferences: boolean
 }) {
   return clampCoverage(
-    (assessment.hasHeadings ? 0.2 : 0) +
-    (assessment.hasBulletLists ? 0.15 : 0) +
-    (assessment.hasCanonicalLinks ? 0.2 : 0) +
-    (assessment.hasMarkdownLinks ? 0.15 : 0) +
-    (assessment.hasAiGuidance ? 0.15 : 0) +
-    (assessment.hasAiReadableReferences ? 0.15 : 0)
+    (assessment.hasAiGuidance ? 0.28 : 0) +
+    (assessment.hasAiReadableReferences ? 0.22 : 0) +
+    (assessment.hasCanonicalLinks ? 0.18 : 0) +
+    (assessment.hasMarkdownLinks ? 0.16 : 0) +
+    (assessment.hasHeadings ? 0.1 : 0) +
+    (assessment.hasBulletLists ? 0.06 : 0)
   )
 }
 
@@ -910,13 +1143,17 @@ function isValidMarkdownDocDiscovery(
   if (!endpoint) return false
 
   const body = endpoint.body.trim()
-  const acceptedContentType = hasAcceptedLlmsContentType(endpoint.contentType)
-  const minimumContentLength = body.length >= 140
+  const minimumContentLength = body.length >= 120
   const redirectsToHomepage =
     endpoint.finalUrl !== endpoint.url &&
     isHomepageLikeUrl(endpoint.finalUrl, expectedPath)
+  const normalizedBody = body.toLowerCase()
+  const isTinyPlaceholder =
+    body.length < 120 ||
+    /coming soon|todo|placeholder|tbd|under construction|hello world/i.test(normalizedBody)
 
-  return endpoint.status === 200 && acceptedContentType && minimumContentLength && !redirectsToHomepage
+  // Body-first: treat valid guidance as discovered even if MIME is plain/html/missing.
+  return endpoint.status === 200 && minimumContentLength && !isTinyPlaceholder && !redirectsToHomepage
 }
 
 function assessLlmsDocument(
@@ -942,23 +1179,31 @@ function assessLlmsDocument(
   }
 
   const body = endpoint.body.trim()
-  const normalizedBody = body.toLowerCase()
-  const acceptedContentType = hasAcceptedLlmsContentType(endpoint.contentType)
-  const minimumContentLength = body.length >= 140
-  const lines = body
+  const acceptedContentType =
+    hasAcceptedLlmsContentType(endpoint.contentType) ||
+    endpoint.contentType === "" ||
+    endpoint.contentType.includes("text/") ||
+    endpoint.contentType.includes("application/octet-stream")
+  const minimumContentLength = body.length >= 120
+  const hasHtmlShell = looksLikeHtml(body)
+  const textBody = hasHtmlShell ? stripHtml(body) : body
+  const normalizedBody = textBody.toLowerCase()
+  const lines = textBody
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
   const headingCount = lines.filter((line) => /^#{1,6}\s+\S/.test(line)).length
   const bulletCount = lines.filter((line) => /^[-*+]\s+\S/.test(line)).length
+  const htmlHeadingCount = hasHtmlShell ? (body.match(/<h[1-6][\s>]/gi)?.length ?? 0) : 0
+  const htmlBulletCount = hasHtmlShell ? (body.match(/<li[\s>]/gi)?.length ?? 0) : 0
+  const discoveredLinks = extractLinksFromGuidanceBody(body)
   const markdownLinks = [...body.matchAll(/\[[^\]]+\]\((https?:\/\/[^)\s]+|\/[^)\s]*)\)/g)]
-  const canonicalLinks = markdownLinks.filter((match) =>
-    /(canonical|primary|official|site|homepage|catalog|docs|documentation|products?)/i.test(match[1] ?? "")
+  const canonicalLinks = discoveredLinks.filter((candidate) =>
+    /(canonical|primary|official|site|homepage|catalog|docs|documentation|products?|collections?|search|sitemap|robots|policy|returns|shipping)/i.test(candidate)
   )
   const groupedSectionCount = headingCount + bulletCount
-  const hasHtmlShell = /<html[\s>]|<body[\s>]|<!doctype html/i.test(body)
   const isTinyPlaceholder =
-    body.length < 140 ||
+    textBody.length < 120 ||
     /coming soon|todo|placeholder|tbd|under construction|hello world/i.test(normalizedBody)
   const redirectsToHomepage =
     endpoint.finalUrl !== endpoint.url &&
@@ -969,32 +1214,30 @@ function assessLlmsDocument(
     /(mcp|ucp|agent instructions?|commerce workflows?)/i.test(normalizedBody)
   const hasAiReadableReferences =
     /(api|docs|documentation|catalog|products?|collections?|search|feed|schema|json|markdown|guide|policy|workflow|commerce)/i.test(normalizedBody)
-  const hasHeadings = headingCount >= 2
-  const hasBulletLists = bulletCount >= 2
+  const hasHeadings = headingCount >= 2 || htmlHeadingCount >= 2
+  const hasBulletLists = bulletCount >= 2 || htmlBulletCount >= 2
+  const hasNavigableLinks = discoveredLinks.length > 0 || markdownLinks.length > 0
   const contentDepth = clampCoverage(
-    Math.min(1, body.length / 1200) * 0.45 +
-    Math.min(1, groupedSectionCount / 8) * 0.3 +
-    Math.min(1, markdownLinks.length / 8) * 0.25
+    Math.min(1, textBody.length / 1200) * 0.45 +
+    Math.min(1, (groupedSectionCount + htmlHeadingCount + htmlBulletCount) / 10) * 0.3 +
+    Math.min(1, discoveredLinks.length / 10) * 0.25
   )
   const parsable =
     endpoint.status === 200 &&
-    acceptedContentType &&
     minimumContentLength &&
-    !hasHtmlShell &&
     !isTinyPlaceholder &&
     !redirectsToHomepage
   const structured =
     parsable &&
     lines.length >= 4 &&
-    hasHeadings &&
-    hasBulletLists &&
-    groupedSectionCount >= 4 &&
-    hasAiReadableReferences
+    (hasHeadings || hasBulletLists) &&
+    (hasAiGuidance || hasAiReadableReferences) &&
+    (hasNavigableLinks || canonicalLinks.length > 0)
   const sectionQuality = getLlmsSectionQuality({
     hasHeadings,
     hasBulletLists,
     hasCanonicalLinks: canonicalLinks.length > 0,
-    hasMarkdownLinks: markdownLinks.length > 0,
+    hasMarkdownLinks: hasNavigableLinks,
     hasAiGuidance,
     hasAiReadableReferences,
   })
@@ -1008,7 +1251,7 @@ function assessLlmsDocument(
     hasCanonicalLinks: parsable && canonicalLinks.length > 0,
     hasHeadings,
     hasBulletLists,
-    hasMarkdownLinks: parsable && markdownLinks.length > 0,
+    hasMarkdownLinks: parsable && hasNavigableLinks,
     hasAiGuidance,
     hasAiReadableReferences,
     sectionQuality,
@@ -1132,13 +1375,55 @@ async function probePathAcrossBases(baseOrigins: string[], path: string) {
   const pathVariants = path.endsWith("/") ? [path, path.slice(0, -1)] : [path, `${path}/`]
   const dedupedPathVariants = [...new Set(pathVariants.filter(Boolean))]
   const requests = baseOrigins.flatMap((baseOrigin) =>
-    dedupedPathVariants.map((candidatePath) =>
-      probeEndpoint(new URL(candidatePath, baseOrigin).toString())
-    )
+    dedupedPathVariants.map((candidatePath) => ({
+      candidatePath,
+      probe: probeEndpoint(new URL(candidatePath, baseOrigin).toString()),
+    }))
   )
-  const results = await Promise.all(requests)
+  const results = await Promise.all(
+    requests.map(async (entry) => ({
+      candidatePath: entry.candidatePath,
+      endpoint: await entry.probe,
+    }))
+  )
 
-  return results.sort((a, b) => scoreProbeResult(b) - scoreProbeResult(a))[0] ?? null
+  const normalizePath = (value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) return "/"
+    return trimmed.replace(/\/+$/, "") || "/"
+  }
+
+  const targetPaths = new Set(dedupedPathVariants.map(normalizePath))
+  const scored = results
+    .map(({ candidatePath, endpoint }) => {
+      if (!endpoint) return { endpoint, score: -1 }
+
+      let score = scoreProbeResult(endpoint) * 100
+
+      // Prefer responses that stay on (or very near) the requested path rather
+      // than landing on a generic homepage shell with a 200 status.
+      try {
+        const finalPath = normalizePath(new URL(endpoint.finalUrl).pathname)
+        if (targetPaths.has(finalPath)) {
+          score += 60
+        } else if (finalPath.startsWith(normalizePath(candidatePath))) {
+          score += 20
+        } else if (finalPath === "/") {
+          score -= 25
+        }
+      } catch {
+        // ignore invalid URLs
+      }
+
+      const body = endpoint.body.trim()
+      if (body.length >= 120) score += 10
+      if (/coming soon|placeholder|tbd|under construction/i.test(body.toLowerCase())) score -= 20
+
+      return { endpoint, score }
+    })
+    .sort((a, b) => b.score - a.score)
+
+  return scored[0]?.endpoint ?? null
 }
 
 function isProbablyStructuredEndpoint(endpoint: Awaited<ReturnType<typeof probeEndpoint>>) {
@@ -1325,40 +1610,358 @@ function extractNetworkSignals(page: string, baseUrl: string): PageNetworkSignal
   }
 }
 
+function isUsefulHomepageBody(probe: Awaited<ReturnType<typeof probeEndpoint>>) {
+  if (!probe) return false
+  // A non-2xx response means the server didn't actually return the page.
+  // Whatever body we got is an error page, redirect stub, or partial response —
+  // running the schema parser on it produces all-zero scores. Fall back to the
+  // WAF-blocked path instead.
+  if (!probe.ok) return false
+
+  const body = (probe.body ?? "").trim()
+  if (body.length < 220) return false
+
+  // Large pages (>= 50 KB) are almost certainly real storefronts. Real Shopify
+  // PDPs are typically 80–250 KB. Interstitials are always tiny.
+  if (body.length >= 50_000) return true
+
+  const normalized = body.toLowerCase()
+
+  // Reject explicit bot-challenge interstitial fingerprints. Note: we DO NOT
+  // match plain CDN brand names like "cloudflare" — those legitimately appear
+  // in Shopify script src attributes and would falsely flag real PDPs.
+  if (
+    /please enable javascript and cookies to continue|enable cookies and reload|verify you are human|checking your browser|ddos protection by cloudflare|cf-browser-verification|human verification required/i.test(
+      normalized
+    )
+  ) {
+    return false
+  }
+
+  // Mid-size body (220 ≤ len < 50KB): require real HTML page structure to
+  // distinguish actual lightweight storefronts from JSON error blobs / stubs.
+  return /<body[\s>]/i.test(body) && /<title[\s>]/i.test(body)
+}
+
 async function deriveSignals(url: string): Promise<AuditSignals> {
   const homepageProbe = await probeEndpoint(url)
-  const homepage = homepageProbe?.ok ? homepageProbe.body : null
+  const homepage = isUsefulHomepageBody(homepageProbe) ? homepageProbe!.body : null
+
+  console.log("HOMEPAGE_BODY_CHECK:", {
+    probeOk: homepageProbe?.ok,
+    probeStatus: homepageProbe?.status,
+    finalUrl: homepageProbe?.finalUrl,
+    contentType: homepageProbe?.contentType,
+    bodyLength: (homepageProbe?.body ?? "").length,
+    usefulBody: !!homepage,
+  })
 
   if (!homepage) {
+    // Homepage may be blocked by WAF/bot protection. We still try to audit the
+    // agent-facing surfaces (llms/docs/discovery) and a few lightweight probes
+    // so stores aren't unfairly scored as "zero" when guidance is exposed.
+    const resolvedBaseUrl = homepageProbe?.finalUrl ?? url
+    const origin = new URL(resolvedBaseUrl).origin
+    const probeBaseOrigins = getProbeBaseVariants(resolvedBaseUrl)
+
+    const llmsCandidates = [
+      "/llms.txt",
+      "/.well-known/llms.txt",
+      "/llms-full.txt",
+    ]
+    const markdownDocCandidates = [
+      "/agents.md",
+      "/readme.md",
+      "/docs.md",
+    ]
+    const agenticCandidates = [
+      "/mcp",
+      "/api/mcp",
+      "/.well-known/oauth-authorization-server",
+      "/.well-known/openid-configuration",
+    ]
+
+    const pdpHandleMatch = new URL(resolvedBaseUrl).pathname.match(/\/products\/([^/?#]+)/i)
+    const pdpHandle = pdpHandleMatch?.[1]?.trim() ?? ""
+    const shopifyPdpJsonPath = pdpHandle ? `/products/${pdpHandle}.js` : ""
+
+    const [robotsText, sitemapText, llmsCandidateResults, markdownDocResults, agenticCandidateResults, cartProbe, productsJsonProbe, shopifyPdpJsonProbe] =
+      await Promise.all([
+        fetchText(new URL("/robots.txt", origin).toString()),
+        fetchText(new URL("/sitemap.xml", origin).toString()),
+        Promise.all(llmsCandidates.map((path) => probePathAcrossBases(probeBaseOrigins, path))),
+        Promise.all(markdownDocCandidates.map((path) => probePathAcrossBases(probeBaseOrigins, path))),
+        Promise.all(agenticCandidates.map((path) => probePathAcrossBases(probeBaseOrigins, path))),
+        probePathAcrossBases(probeBaseOrigins, "/cart.js"),
+        probePathAcrossBases(probeBaseOrigins, "/products.json"),
+        shopifyPdpJsonPath ? probePathAcrossBases(probeBaseOrigins, shopifyPdpJsonPath) : Promise.resolve(null),
+      ])
+
+    const llmsAssessments = llmsCandidateResults.map((endpoint, index) =>
+      assessLlmsDocument(endpoint, llmsCandidates[index] ?? "/llms.txt")
+    )
+    const markdownDocAssessments = markdownDocResults.map((endpoint, index) =>
+      assessLlmsDocument(endpoint, markdownDocCandidates[index] ?? "/agents.md")
+    )
+    const primaryLlmsAssessment =
+      [...llmsAssessments].sort(
+        (a, b) =>
+          Number(b.structured) - Number(a.structured) ||
+          Number(b.hasCanonicalLinks) - Number(a.hasCanonicalLinks) ||
+          Number(b.hasMarkdownLinks) - Number(a.hasMarkdownLinks) ||
+          Number(b.hasAiGuidance) - Number(a.hasAiGuidance) ||
+          Number(b.parsable) - Number(a.parsable) ||
+          b.sectionQuality - a.sectionQuality ||
+          Number(b.found) - Number(a.found)
+      )[0]
+    const primaryMarkdownAssessment =
+      [...markdownDocAssessments].sort(
+        (a, b) =>
+          Number(b.structured) - Number(a.structured) ||
+          Number(b.hasCanonicalLinks) - Number(a.hasCanonicalLinks) ||
+          Number(b.hasMarkdownLinks) - Number(a.hasMarkdownLinks) ||
+          Number(b.hasAiGuidance) - Number(a.hasAiGuidance) ||
+          b.sectionQuality - a.sectionQuality ||
+          b.contentDepth - a.contentDepth ||
+          Number(b.found) - Number(a.found)
+      )[0]
+    const markdownDiscoveryFlags = markdownDocResults.map((endpoint, index) =>
+      isValidMarkdownDocDiscovery(endpoint, markdownDocCandidates[index] ?? "/agents.md")
+    )
+    const llmsDeclaredAgentsDoc = Boolean(
+      primaryLlmsAssessment?.found &&
+      llmsCandidateResults.some((endpoint) => /(^|[^\w])agents\.md(\b|$)/i.test(endpoint?.body ?? ""))
+    )
+    const llmsIndicatesAgentGuidance = Boolean(
+      primaryLlmsAssessment?.found &&
+      primaryLlmsAssessment?.hasAiGuidance &&
+      (primaryLlmsAssessment?.hasMarkdownLinks || primaryLlmsAssessment?.hasCanonicalLinks)
+    )
+    const markdownDocsFound =
+      markdownDiscoveryFlags.some(Boolean) || llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance
+    const agentDocsFound =
+      Boolean(markdownDiscoveryFlags[0]) || llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance
+    const hasValidMarkdownGuidance = markdownDocsFound || agentDocsFound
+    const markdownStructured =
+      hasValidMarkdownGuidance &&
+      Boolean(primaryMarkdownAssessment?.structured || llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance)
+    const markdownHasWorkflowGuidance =
+      hasValidMarkdownGuidance &&
+      (markdownDocAssessments.some(
+        (assessment) => assessment.hasAiGuidance || assessment.hasAiReadableReferences
+      ) || ((llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance) && Boolean(primaryLlmsAssessment?.hasAiGuidance)))
+    const markdownHasApiReferences =
+      hasValidMarkdownGuidance &&
+      (markdownDocAssessments.some(
+        (assessment) =>
+          (assessment.hasMarkdownLinks || assessment.hasCanonicalLinks || assessment.hasAiReadableReferences)
+      ) || ((llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance) &&
+        Boolean(
+          primaryLlmsAssessment?.hasMarkdownLinks ||
+          primaryLlmsAssessment?.hasCanonicalLinks ||
+          primaryLlmsAssessment?.hasAiReadableReferences
+        )))
+    const markdownHasAgentInstructions =
+      hasValidMarkdownGuidance &&
+      (markdownDocAssessments.some((assessment) => assessment.hasAiGuidance) ||
+        ((llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance) && Boolean(primaryLlmsAssessment?.hasAiGuidance)))
+    const markdownSemanticQuality = hasValidMarkdownGuidance
+      ? clampCoverage(
+        primaryMarkdownAssessment
+          ? primaryMarkdownAssessment.sectionQuality * 0.6 + primaryMarkdownAssessment.contentDepth * 0.4
+          : (llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance)
+            ? (primaryLlmsAssessment?.sectionQuality ?? 0) * 0.6 + (primaryLlmsAssessment?.contentDepth ?? 0) * 0.4
+            : 0
+      )
+      : 0
+    const primaryGuidanceAssessment =
+      [primaryLlmsAssessment, primaryMarkdownAssessment].sort(
+        (a, b) =>
+          Number(b.structured) - Number(a.structured) ||
+          Number(b.hasCanonicalLinks) - Number(a.hasCanonicalLinks) ||
+          Number(b.hasMarkdownLinks) - Number(a.hasMarkdownLinks) ||
+          Number(b.hasAiGuidance) - Number(a.hasAiGuidance) ||
+          b.sectionQuality - a.sectionQuality ||
+          b.contentDepth - a.contentDepth ||
+          Number(b.parsable) - Number(a.parsable) ||
+          Number(b.found) - Number(a.found)
+      )[0]
+    const llmsFullAssessment = llmsAssessments[2] ?? {
+      found: false,
+      acceptedContentType: false,
+      minimumContentLength: false,
+      parsable: false,
+      structured: false,
+      hasCanonicalLinks: false,
+      hasHeadings: false,
+      hasBulletLists: false,
+      hasMarkdownLinks: false,
+      hasAiGuidance: false,
+      hasAiReadableReferences: false,
+      sectionQuality: 0,
+      contentDepth: 0,
+    }
+
+    const oauthDiscoveryDetected = hasOAuthDiscoveryMetadata(agenticCandidateResults[2]) || hasOAuthDiscoveryMetadata(agenticCandidateResults[3])
+    const mcpEndpointDetected = isValidMcpEndpoint(agenticCandidateResults[0]) || isValidMcpEndpoint(agenticCandidateResults[1])
+    const publicApiDetected = Boolean(cartProbe?.ok || productsJsonProbe?.ok || shopifyPdpJsonProbe?.ok)
+    const authenticatedApiDetected =
+      requiresAuthentication(cartProbe) || requiresAuthentication(productsJsonProbe) || requiresAuthentication(shopifyPdpJsonProbe)
+    const combinedGuidanceBodies = [...llmsCandidateResults, ...markdownDocResults]
+      .map((probe) => probe?.body ?? "")
+      .filter(Boolean)
+      .join("\n")
+    const guidanceLinks = combinedGuidanceBodies ? extractLinksFromGuidanceBody(combinedGuidanceBodies) : []
+    const detectedPlatformFromGuidance = inferPlatformFromSignals({
+      homepage: combinedGuidanceBodies,
+      networkRequestUrls: guidanceLinks,
+      apiEndpointUrls: [],
+    })
+    const detectedPlatform = shopifyPdpJsonProbe?.ok
+      ? "shopify"
+      : detectedPlatformFromGuidance === "custom" && publicApiDetected ? "shopify" : detectedPlatformFromGuidance
+
+    let shopifyPdpData: JsonLdRecord | null = null
+    if (shopifyPdpJsonProbe?.ok) {
+      try {
+        const parsed = JSON.parse(shopifyPdpJsonProbe.body)
+        shopifyPdpData = isRecord(parsed) ? parsed : null
+      } catch {
+        shopifyPdpData = null
+      }
+    }
+
+    const shopifyVariants: JsonLdRecord[] = Array.isArray(shopifyPdpData?.variants)
+      ? shopifyPdpData.variants.filter((variant): variant is JsonLdRecord => isRecord(variant))
+      : []
+    const shopifyOptions: JsonLdRecord[] = Array.isArray(shopifyPdpData?.options)
+      ? shopifyPdpData.options.filter((option): option is JsonLdRecord => isRecord(option))
+      : []
+
+    const blockedProductSchemaCompleteness = shopifyPdpData
+      ? clampCoverage(
+        scoreFieldCompleteness(shopifyPdpData, [
+          { fields: ["title"], weight: 0.22 },
+          { fields: ["body_html"], weight: 0.20 },
+          { fields: ["vendor"], weight: 0.16 },
+          { fields: ["product_type"], weight: 0.10 },
+          { fields: ["tags"], weight: 0.08 },
+          { fields: ["images"], weight: 0.14 },
+          { fields: ["variants"], weight: 0.10 },
+        ])
+      )
+      : 0
+
+    const blockedOfferSchemaCompleteness = clampCoverage(
+      Math.max(
+        ...shopifyVariants.map((variant) =>
+          scoreFieldCompleteness(variant, [
+            { fields: ["price"], weight: 0.28 },
+            { fields: ["compare_at_price"], weight: 0.14 },
+            { fields: ["available"], weight: 0.22 },
+            { fields: ["sku"], weight: 0.18 },
+            { fields: ["option1", "option2", "option3"], weight: 0.18 },
+          ])
+        ),
+        shopifyVariants.length > 0 ? 0.35 : 0
+      )
+    )
+
+    const blockedMerchantTrustScore = shopifyPdpData
+      ? clampCoverage(
+        (hasMeaningfulValue(shopifyPdpData.vendor) ? 0.4 : 0) +
+        (shopifyVariants.length > 0 ? 0.25 : 0) +
+        (blockedOfferSchemaCompleteness * 0.35)
+      )
+      : 0
+
+    const blockedDescriptionCoverage = shopifyPdpData
+      ? clampCoverage(hasMeaningfulValue(shopifyPdpData.body_html) ? 1 : 0)
+      : 0
+    const blockedAttributeCoverage = shopifyPdpData
+      ? clampCoverage(
+        (shopifyOptions.length > 0 ? 0.65 : 0) +
+        (shopifyVariants.some((variant) => hasMeaningfulValue(variant.option1) || hasMeaningfulValue(variant.option2) || hasMeaningfulValue(variant.option3)) ? 0.35 : 0)
+      )
+      : 0
+    const blockedAvailabilityCoverage = clampCoverage(shopifyVariants.some((variant) => hasMeaningfulValue(variant.available)) ? 1 : 0)
+    const blockedPriceCoverage = clampCoverage(shopifyVariants.some((variant) => hasMeaningfulValue(variant.price)) ? 1 : 0)
+    const blockedSemanticReliabilityScore = shopifyPdpData
+      ? clampCoverage(
+        0.78 +
+        (shopifyVariants.length > 0 ? 0.12 : 0) +
+        (blockedOfferSchemaCompleteness > 0.5 ? 0.1 : 0)
+      )
+      : 0
+
+    const fetchBlockedDetected = Boolean(
+      homepageProbe &&
+      (homepageProbe.ok === false ||
+        (homepageProbe.ok === true && !isUsefulHomepageBody(homepageProbe)) ||
+        homepageProbe.status === 403 ||
+        homepageProbe.status === 429)
+    )
+    const averageLatency =
+      [cartProbe, productsJsonProbe, shopifyPdpJsonProbe, ...agenticCandidateResults, ...llmsCandidateResults, ...markdownDocResults]
+        .filter((probe): probe is NonNullable<typeof probe> => Boolean(probe))
+        .reduce((total, probe) => total + probe.latencyMs, 0) /
+      Math.max(
+        1,
+        [cartProbe, productsJsonProbe, shopifyPdpJsonProbe, ...agenticCandidateResults, ...llmsCandidateResults, ...markdownDocResults].filter(Boolean).length
+      )
+    const latencyScore =
+      averageLatency <= 500 ? 1 : averageLatency <= 1200 ? 0.7 : averageLatency <= 2500 ? 0.4 : 0.2
+
+    const sitemapFoundBlocked = Boolean(sitemapText) || /sitemap:/i.test(robotsText ?? "")
+    const robotsFoundBlocked = Boolean(robotsText)
+
     return {
-      sitemapFound: false,
-      robotsFound: false,
+      fetchBlockedDetected,
+      pageType: detectPageType(url),
+      homepageSemanticBaseline: computeHomepageSemanticBaseline({
+        homepageHasOrganizationSchema: false,
+        homepageHasWebsiteSchema: false,
+        homepageHasSearchAction: false,
+        homepageHasBreadcrumbs: false,
+        homepageHasCanonical: false,
+        merchantTrustScore: 0,
+        searchDiscoveryScore: 0,
+        sitemapFound: sitemapFoundBlocked,
+        robotsFound: robotsFoundBlocked,
+      }),
+      homepageHasOrganizationSchema: false,
+      homepageHasWebsiteSchema: false,
+      homepageHasSearchAction: false,
+      homepageHasBreadcrumbs: false,
+      homepageHasCanonical: false,
+      sitemapFound: sitemapFoundBlocked,
+      robotsFound: robotsFoundBlocked,
       productPagesCount: 0,
-      llmsTxtFound: false,
-      llmsFullFound: false,
-      llmsTxtParsable: false,
-      llmsTxtStructured: false,
-      llmsTxtHasCanonicalLinks: false,
-      llmsTxtHasMarkdownLinks: false,
-      llmsTxtHasAiGuidance: false,
-      llmsTxtSectionQuality: 0,
-      llmsTxtContentDepth: 0,
-      markdownDocsFound: false,
-      agentDocsFound: false,
-      markdownStructured: false,
-      markdownHasWorkflowGuidance: false,
-      markdownHasApiReferences: false,
-      markdownHasAgentInstructions: false,
-      markdownSemanticQuality: 0,
-      schemaCoverage: 0,
-      priceCoverage: 0,
-      attributeCoverage: 0,
-      descriptionCoverage: 0,
+      llmsTxtFound: primaryLlmsAssessment?.found ?? false,
+      llmsFullFound: llmsFullAssessment.found,
+      llmsTxtParsable: primaryGuidanceAssessment?.parsable ?? false,
+      llmsTxtStructured: primaryGuidanceAssessment?.structured ?? false,
+      llmsTxtHasCanonicalLinks: primaryGuidanceAssessment?.hasCanonicalLinks ?? false,
+      llmsTxtHasMarkdownLinks: primaryGuidanceAssessment?.hasMarkdownLinks ?? false,
+      llmsTxtHasAiGuidance: primaryGuidanceAssessment?.hasAiGuidance ?? false,
+      llmsTxtSectionQuality: primaryGuidanceAssessment?.sectionQuality ?? 0,
+      llmsTxtContentDepth: primaryGuidanceAssessment?.contentDepth ?? 0,
+      markdownDocsFound,
+      agentDocsFound,
+      markdownStructured,
+      markdownHasWorkflowGuidance,
+      markdownHasApiReferences,
+      markdownHasAgentInstructions,
+      markdownSemanticQuality,
+      schemaCoverage: clampCoverage((blockedProductSchemaCompleteness * 0.6) + (blockedOfferSchemaCompleteness * 0.4)),
+      priceCoverage: blockedPriceCoverage,
+      attributeCoverage: blockedAttributeCoverage,
+      descriptionCoverage: blockedDescriptionCoverage,
       cartCoverage: 0,
-      detectedPlatform: "custom",
-      availabilityCoverage: 0,
-      mcpEndpointDetected: false,
-      publicApiDetected: false,
+      detectedPlatform,
+      availabilityCoverage: blockedAvailabilityCoverage,
+      mcpEndpointDetected,
+      publicApiDetected,
       scrapeableDataDetected: false,
       stableIdentifierCoverage: 0,
       cartApiCoverage: 0,
@@ -1369,27 +1972,45 @@ async function deriveSignals(url: string): Promise<AuditSignals> {
       hasCheckoutApi: false,
       apiEndpointUrls: [],
       networkRequestUrls: [],
-      oauthDiscoveryDetected: false,
-      authenticatedApiDetected: false,
-      stepsToFirstSuccess: 5,
-      hasDefaultContext: false,
-      clearToolDiscovery: false,
+      oauthDiscoveryDetected,
+      authenticatedApiDetected,
+      stepsToFirstSuccess: mcpEndpointDetected ? 1 : oauthDiscoveryDetected ? 2 : publicApiDetected ? 2 : 5,
+      hasDefaultContext: Boolean(mcpEndpointDetected),
+      clearToolDiscovery: Boolean(mcpEndpointDetected || oauthDiscoveryDetected || primaryGuidanceAssessment?.hasAiGuidance),
       readCoverage: 0,
       writeCoverage: 0,
-      toolCoverage: 0,
+      toolCoverage: clampCoverage(
+        Math.max(
+          getSemanticClarity(
+            `${primaryGuidanceAssessment?.hasAiGuidance ? "agent guidance" : ""} ${primaryGuidanceAssessment?.hasAiReadableReferences ? "references" : ""}`
+          ),
+          primaryGuidanceAssessment?.sectionQuality ?? 0
+        )
+      ),
       successRate: 0,
       schemaConsistency: 0,
-      latencyScore: 0,
-      surfaceAuthenticityScore: 0,
+      latencyScore,
+      surfaceAuthenticityScore: clampCoverage(
+        (mcpEndpointDetected ? 1 : 0) * 0.5 +
+        (oauthDiscoveryDetected ? 1 : 0) * 0.3 +
+        ((primaryGuidanceAssessment?.hasAiGuidance ?? false) ? 1 : 0) * 0.2
+      ),
       actionabilityDetected: false,
       sessionContinuityDetected: false,
-      semanticClarityScore: 0,
-      productSchemaCompleteness: 0,
-      offerSchemaCompleteness: 0,
-      merchantTrustScore: 0,
+      semanticClarityScore: clampCoverage(
+        Math.max(
+          getSemanticClarity(
+            `${(primaryGuidanceAssessment?.hasAiGuidance ?? false) ? "agent workflows" : ""} ${(primaryGuidanceAssessment?.hasAiReadableReferences ?? false) ? "commerce api docs" : ""}`
+          ),
+          primaryGuidanceAssessment?.sectionQuality ?? 0
+        )
+      ),
+      productSchemaCompleteness: blockedProductSchemaCompleteness,
+      offerSchemaCompleteness: blockedOfferSchemaCompleteness,
+      merchantTrustScore: blockedMerchantTrustScore,
       variantSemanticScore: 0,
       knowledgeGraphScore: 0,
-      semanticReliabilityScore: 0,
+      semanticReliabilityScore: blockedSemanticReliabilityScore,
       commerceActionabilityScore: 0,
       searchDiscoveryScore: 0,
       crossPageConsistencyScore: 0,
@@ -1444,7 +2065,13 @@ async function deriveSignals(url: string): Promise<AuditSignals> {
     probePathAcrossBases(probeBaseOrigins, "/api/"),
   ])
 
-  const links = [...homepage.matchAll(/href=["']([^"'#]+)["']/gi)]
+  // When the input URL is itself a PDP, the "homepage" HTML IS the product page.
+  // We must include it directly in the product analysis — crawling links out of
+  // a PDP typically yields zero or few further product hrefs, so productSignals
+  // would otherwise be empty and all schema scores would collapse to 0.
+  const selfIsPdp = detectPageType(url) === "pdp"
+
+  const discoveredLinks = [...homepage.matchAll(/href=["']([^"'#]+)["']/gi)]
     .map((match) => match[1]?.trim())
     .filter(Boolean)
     .map((href) => toAbsoluteUrl(resolvedBaseUrl, href))
@@ -1459,14 +2086,22 @@ async function deriveSignals(url: string): Promise<AuditSignals> {
         normalized.includes("/item")
       )
     })
-    .slice(0, 12)
+    // Don't re-fetch the input URL — we already have its HTML as `homepage`
+    .filter((href) => href !== resolvedBaseUrl && href !== url)
+    .slice(0, selfIsPdp ? 11 : 12)
 
-  const productPages = await Promise.all(
-    links.map(async (link) => {
+  const discoveredProductHtml = await Promise.all(
+    discoveredLinks.map(async (link) => {
       const html = await fetchText(link)
       return html ?? ""
     })
   )
+
+  // links and productPages are kept index-aligned for extractNetworkSignals
+  const links = selfIsPdp ? [resolvedBaseUrl, ...discoveredLinks] : discoveredLinks
+  const productPages = selfIsPdp
+    ? [homepage, ...discoveredProductHtml]
+    : discoveredProductHtml
 
   const pageNetworkSignals = productPages.map((page, index) =>
     extractNetworkSignals(page, links[index] ?? origin)
@@ -1479,6 +2114,36 @@ async function deriveSignals(url: string): Promise<AuditSignals> {
       links[index] ?? origin,
       pageNetworkSignals[index],
       merchantLayerSignals
+    )
+  )
+
+  // Schema evidence is more reliable than URL patterns for PDP detection.
+  // If Product or Offer schema meets minimum completeness thresholds, treat
+  // the page as a PDP regardless of what the URL pattern suggests.
+  const strongProductSemanticEvidence = productSignals.some(
+    (signal) =>
+      signal.productSchemaCompleteness > 0.45 ||
+      signal.offerSchemaCompleteness > 0.35
+  )
+  let detectedPageType = detectPageType(url)
+  if (detectedPageType !== "pdp" && strongProductSemanticEvidence) {
+    detectedPageType = "pdp"
+  }
+
+  console.log("PAGE_TYPE:", detectedPageType)
+  console.log("STRONG_PRODUCT_EVIDENCE:", strongProductSemanticEvidence)
+  console.log(
+    "PRODUCT_SIGNALS:",
+    JSON.stringify(
+      productSignals.map((s) => ({
+        productSchemaCompleteness: s.productSchemaCompleteness,
+        offerSchemaCompleteness: s.offerSchemaCompleteness,
+        variantSemanticScore: s.variantSemanticScore,
+        semanticReliabilityScore: s.semanticReliabilityScore,
+        merchantTrustScore: s.merchantTrustScore,
+      })),
+      null,
+      2
     )
   )
 
@@ -1514,25 +2179,50 @@ async function deriveSignals(url: string): Promise<AuditSignals> {
   const markdownDiscoveryFlags = markdownDocResults.map((endpoint, index) =>
     isValidMarkdownDocDiscovery(endpoint, markdownDocCandidates[index] ?? "/agents.md")
   )
-  const markdownDocsFound = markdownDiscoveryFlags.some(Boolean)
-  const agentDocsFound = Boolean(markdownDiscoveryFlags[0])
+  const llmsDeclaredAgentsDoc = Boolean(
+    primaryLlmsAssessment?.found &&
+    llmsCandidateResults.some((endpoint) => /(^|[^\w])agents\.md(\b|$)/i.test(endpoint?.body ?? ""))
+  )
+  const llmsIndicatesAgentGuidance = Boolean(
+    primaryLlmsAssessment?.found &&
+    primaryLlmsAssessment?.hasAiGuidance &&
+    (primaryLlmsAssessment?.hasMarkdownLinks || primaryLlmsAssessment?.hasCanonicalLinks)
+  )
+  const markdownDocsFound =
+    markdownDiscoveryFlags.some(Boolean) || llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance
+  const agentDocsFound =
+    Boolean(markdownDiscoveryFlags[0]) || llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance
   const hasValidMarkdownGuidance = markdownDocsFound || agentDocsFound
-  const markdownStructured = hasValidMarkdownGuidance && Boolean(primaryMarkdownAssessment?.structured)
-  const markdownHasWorkflowGuidance = hasValidMarkdownGuidance && markdownDocAssessments.some(
-    (assessment) => assessment.hasAiGuidance || assessment.hasAiReadableReferences
-  )
-  const markdownHasApiReferences = hasValidMarkdownGuidance && markdownDocAssessments.some(
-    (assessment) =>
-      (assessment.hasMarkdownLinks || assessment.hasCanonicalLinks || assessment.hasAiReadableReferences)
-  )
-  const markdownHasAgentInstructions = hasValidMarkdownGuidance && markdownDocAssessments.some(
-    (assessment) => assessment.hasAiGuidance
-  )
+  const markdownStructured =
+    hasValidMarkdownGuidance &&
+    Boolean(primaryMarkdownAssessment?.structured || llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance)
+  const markdownHasWorkflowGuidance =
+    hasValidMarkdownGuidance &&
+    (markdownDocAssessments.some(
+      (assessment) => assessment.hasAiGuidance || assessment.hasAiReadableReferences
+    ) || ((llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance) && Boolean(primaryLlmsAssessment?.hasAiGuidance)))
+  const markdownHasApiReferences =
+    hasValidMarkdownGuidance &&
+    (markdownDocAssessments.some(
+      (assessment) =>
+        (assessment.hasMarkdownLinks || assessment.hasCanonicalLinks || assessment.hasAiReadableReferences)
+    ) || ((llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance) &&
+      Boolean(
+        primaryLlmsAssessment?.hasMarkdownLinks ||
+        primaryLlmsAssessment?.hasCanonicalLinks ||
+        primaryLlmsAssessment?.hasAiReadableReferences
+      )))
+  const markdownHasAgentInstructions =
+    hasValidMarkdownGuidance &&
+    (markdownDocAssessments.some((assessment) => assessment.hasAiGuidance) ||
+      ((llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance) && Boolean(primaryLlmsAssessment?.hasAiGuidance)))
   const markdownSemanticQuality = hasValidMarkdownGuidance
     ? clampCoverage(
       primaryMarkdownAssessment
         ? primaryMarkdownAssessment.sectionQuality * 0.6 + primaryMarkdownAssessment.contentDepth * 0.4
-        : 0
+        : (llmsDeclaredAgentsDoc || llmsIndicatesAgentGuidance)
+          ? (primaryLlmsAssessment?.sectionQuality ?? 0) * 0.6 + (primaryLlmsAssessment?.contentDepth ?? 0) * 0.4
+          : 0
     )
     : 0
   const primaryGuidanceAssessment =
@@ -1758,11 +2448,19 @@ async function deriveSignals(url: string): Promise<AuditSignals> {
       toolRegistryScore
     )
   )
-  const productSchemaCompleteness = averageCoverage(
-    productSignals.map((signal) => signal.productSchemaCompleteness)
+  // Use the best (max) schema completeness across all sampled pages rather than
+  // the average. Averaging collapses to near-zero when a self-PDP page with strong
+  // schema is mixed with 10+ linked pages (collection/shop pages) that have none.
+  // If at least one page carries full Product/Offer schema the store has that capability.
+  const productSchemaCompleteness = clampCoverage(
+    productSignals.length > 0
+      ? Math.max(...productSignals.map((signal) => signal.productSchemaCompleteness))
+      : 0
   )
-  const offerSchemaCompleteness = averageCoverage(
-    productSignals.map((signal) => signal.offerSchemaCompleteness)
+  const offerSchemaCompleteness = clampCoverage(
+    productSignals.length > 0
+      ? Math.max(...productSignals.map((signal) => signal.offerSchemaCompleteness))
+      : 0
   )
   const merchantTrustScore = clampCoverage(
     Math.max(
@@ -1804,9 +2502,31 @@ async function deriveSignals(url: string): Promise<AuditSignals> {
     averageCoverage(productSignals.map((signal) => signal.aiShoppingReadinessScore))
   )
 
+  const sitemapFoundOk = Boolean(sitemapText) || /sitemap:/i.test(robotsText ?? "")
+  const robotsFoundOk = Boolean(robotsText)
+  const homepageSemanticBaseline = computeHomepageSemanticBaseline({
+    homepageHasOrganizationSchema: merchantLayerSignals.homepageHasOrganizationSchema,
+    homepageHasWebsiteSchema: merchantLayerSignals.homepageHasWebsiteSchema,
+    homepageHasSearchAction: merchantLayerSignals.homepageHasSearchAction,
+    homepageHasBreadcrumbs: merchantLayerSignals.homepageHasBreadcrumbs,
+    homepageHasCanonical: merchantLayerSignals.homepageHasCanonical,
+    merchantTrustScore: merchantLayerSignals.merchantTrustScore,
+    searchDiscoveryScore: merchantLayerSignals.searchDiscoveryScore,
+    sitemapFound: sitemapFoundOk,
+    robotsFound: robotsFoundOk,
+  })
+
   return {
-    sitemapFound: Boolean(sitemapText) || /sitemap:/i.test(robotsText ?? ""),
-    robotsFound: Boolean(robotsText),
+    fetchBlockedDetected: false,
+    pageType: detectedPageType,
+    homepageSemanticBaseline,
+    homepageHasOrganizationSchema: merchantLayerSignals.homepageHasOrganizationSchema,
+    homepageHasWebsiteSchema: merchantLayerSignals.homepageHasWebsiteSchema,
+    homepageHasSearchAction: merchantLayerSignals.homepageHasSearchAction,
+    homepageHasBreadcrumbs: merchantLayerSignals.homepageHasBreadcrumbs,
+    homepageHasCanonical: merchantLayerSignals.homepageHasCanonical,
+    sitemapFound: sitemapFoundOk,
+    robotsFound: robotsFoundOk,
     productPagesCount: links.length,
     llmsTxtFound: primaryLlmsAssessment.found,
     llmsFullFound: llmsFullAssessment.found,
@@ -1829,7 +2549,11 @@ async function deriveSignals(url: string): Promise<AuditSignals> {
     attributeCoverage: getCoverage(productSignals, "attributes"),
     descriptionCoverage: getCoverage(productSignals, "description"),
     cartCoverage: getCoverage(productSignals, "cart"),
-    detectedPlatform: detectPlatform(homepage),
+    detectedPlatform: inferPlatformFromSignals({
+      homepage,
+      networkRequestUrls,
+      apiEndpointUrls,
+    }),
     availabilityCoverage: getCoverage(productSignals, "availability"),
     mcpEndpointDetected,
     publicApiDetected,
@@ -1885,15 +2609,15 @@ function scoreLlms(signals: AuditSignals) {
   })
 
   const llmsBreakdown = {
-    llmsTxtFoundContribution: signals.llmsTxtFound ? 20 : 0,
-    llmsFullFoundContribution: signals.llmsFullFound ? 8 : 0,
-    llmsTxtParsableContribution: signals.llmsTxtParsable ? 8 : 0,
-    llmsTxtStructuredContribution: signals.llmsTxtStructured ? 18 : 0,
-    canonicalLinksContribution: signals.llmsTxtHasCanonicalLinks ? 14 : 0,
-    markdownLinksContribution: signals.llmsTxtHasMarkdownLinks ? 10 : 0,
-    aiGuidanceContribution: signals.llmsTxtHasAiGuidance ? 16 : 0,
+    llmsTxtFoundContribution: signals.llmsTxtFound ? 18 : 0,
+    llmsFullFoundContribution: signals.llmsFullFound ? 6 : 0,
+    llmsTxtParsableContribution: signals.llmsTxtParsable ? 6 : 0,
+    llmsTxtStructuredContribution: signals.llmsTxtStructured ? 10 : 0,
+    canonicalLinksContribution: signals.llmsTxtHasCanonicalLinks ? 12 : 0,
+    markdownLinksContribution: signals.llmsTxtHasMarkdownLinks ? 12 : 0,
+    aiGuidanceContribution: signals.llmsTxtHasAiGuidance ? 24 : 0,
     sectionQualityContribution: signals.llmsTxtSectionQuality * 10,
-    contentDepthContribution: signals.llmsTxtContentDepth * 6,
+    contentDepthContribution: signals.llmsTxtContentDepth * 2,
   }
 
   console.log("LLMS_BREAKDOWN:", llmsBreakdown)
@@ -1947,17 +2671,17 @@ function scoreLlms(signals: AuditSignals) {
         ? "No primary llms.txt document was confirmed, but other markdown guidance docs appear to provide some AI-facing documentation."
         : "No primary llms.txt document was confirmed at /llms.txt or /.well-known/llms.txt.",
     signals.llmsTxtParsable
-      ? `The document passes basic validation for status, content type, and content depth (${Math.round(signals.llmsTxtContentDepth * 100)}% depth).`
-      : "The discovered file does not yet pass basic llms.txt validation for machine use.",
+      ? `The document is accessible and has enough usable content for agents to consume (${Math.round(signals.llmsTxtContentDepth * 100)}% depth).`
+      : "The discovered file does not yet look reliably consumable by agents (too short, placeholder-like, or redirected).",
     signals.llmsTxtStructured
-      ? `The document uses recognizable markdown structure with grouped sections (quality ${Math.round(signals.llmsTxtSectionQuality * 100)}%).`
-      : "The document is missing strong markdown structure, so agents may struggle to extract dependable guidance.",
+      ? `The document contains structured guidance sections (quality ${Math.round(signals.llmsTxtSectionQuality * 100)}%).`
+      : "The document lacks clear structure, so agents may struggle to extract dependable guidance.",
     signals.llmsTxtHasCanonicalLinks
       ? "Canonical or primary resource links are present, which helps agents find the preferred destinations."
       : "Canonical resource links are missing, so the file gives weaker guidance about preferred destinations.",
     signals.llmsTxtHasMarkdownLinks
-      ? "Structured markdown links are present, which gives agents explicit destinations to follow."
-      : "Structured markdown links are limited or missing, so the file provides weak navigational guidance for agents.",
+      ? "Navigable links/endpoints are present, which gives agents explicit destinations to follow."
+      : "Links/endpoints are limited or missing, so the file provides weak navigational guidance for agents.",
     signals.llmsTxtHasAiGuidance
       ? "The file includes explicit AI or agent guidance rather than only generic site links."
       : "The file does not clearly explain how AI systems should use, access, or prioritize site resources.",
@@ -2252,131 +2976,51 @@ function scoreIntegrations(signals: AuditSignals) {
 }
 
 function scoreMcp(signals: AuditSignals) {
-  console.log("MCP_SIGNALS:", {
-    mcpEndpointDetected: signals.mcpEndpointDetected,
-    oauthDiscoveryDetected: signals.oauthDiscoveryDetected,
-    authenticatedApiDetected: signals.authenticatedApiDetected,
-    publicApiDetected: signals.publicApiDetected,
-    actionabilityDetected: signals.actionabilityDetected,
-    sessionContinuityDetected: signals.sessionContinuityDetected,
-    surfaceAuthenticityScore: signals.surfaceAuthenticityScore,
-    semanticClarityScore: signals.semanticClarityScore,
-    successRate: signals.successRate,
-    hasDefaultContext: signals.hasDefaultContext,
-    clearToolDiscovery: signals.clearToolDiscovery,
-    readCoverage: signals.readCoverage,
-    writeCoverage: signals.writeCoverage,
-    toolCoverage: signals.toolCoverage,
-    latencyScore: signals.latencyScore,
-  })
+  // Temporary V1 baseline: platform-known commerce engines get a fixed MCP
+  // compatibility floor. Deeper MCP endpoint/auth/tool heuristics are disabled.
+  const knownCommercePlatforms = [
+    "shopify",
+    "kartmax",
+    "magento",
+    "woocommerce",
+    "bigcommerce",
+    "salesforce_commerce_cloud",
+    "sfcc",
+    "commercetools",
+    "saleor",
+    "medusa",
+    "prestashop",
+    "opencart",
+    "nopcommerce",
+    "shopware",
+    "hybris",
+    "adobe_commerce",
+    "elasticpath",
+  ]
 
-  const discoveryScore = clampCoverage(
-    (signals.mcpEndpointDetected ? 1 : 0) * 0.55 +
-    (signals.oauthDiscoveryDetected ? 1 : 0) * 0.3 +
-    (signals.authenticatedApiDetected ? 1 : 0) * 0.15
-  )
-  const authSessionScore = clampCoverage(
-    (signals.authenticatedApiDetected ? 1 : 0) * 0.45 +
-    (signals.sessionContinuityDetected ? 1 : 0) * 0.35 +
-    (signals.hasDefaultContext ? 1 : 0) * 0.2
-  )
-  const actionabilityScore = clampCoverage(
-    (signals.actionabilityDetected ? 1 : 0) * 0.5 +
-    signals.writeCoverage * 0.3 +
-    signals.readCoverage * 0.2
-  )
-  const toolScore = clampCoverage(
-    signals.toolCoverage * 0.65 +
-    signals.semanticClarityScore * 0.2 +
-    (signals.clearToolDiscovery ? 1 : 0) * 0.15
-  )
-  const publicApiContribution = Math.min(0.15, signals.publicApiDetected ? 0.15 : 0)
-  const reliabilityScore = clampCoverage(
-    signals.successRate * 0.45 +
-    signals.surfaceAuthenticityScore * 0.35 +
-    signals.latencyScore * 0.2
-  )
-  const confidence = clampCoverage(
-    signals.successRate * 0.35 +
-    signals.surfaceAuthenticityScore * 0.25 +
-    discoveryScore * 0.2 +
-    authSessionScore * 0.2
-  )
-  const weightedScore =
-    toolScore * 35 +
-    actionabilityScore * 25 +
-    authSessionScore * 20 +
-    discoveryScore * 15 +
-    publicApiContribution * 100 * 0.05
-  const finalScore = clamp(weightedScore * confidence)
+  const normalizedPlatform = String(signals.detectedPlatform ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+  const isKnownCommercePlatform = knownCommercePlatforms.includes(normalizedPlatform)
+  const finalScore = isKnownCommercePlatform ? 30 : 0
 
-  console.log("MCP_ACCESS_DECISION:", {
-    reason:
-      signals.mcpEndpointDetected ? "Structured MCP surface" :
-        signals.oauthDiscoveryDetected ? "OAuth metadata and auth discovery" :
-          signals.authenticatedApiDetected ? "Authenticated commerce surface" :
-            signals.publicApiDetected ? "Public API only" :
-              "Weak discovery",
-    discoveryScore,
-    authSessionScore,
-  })
-
-  console.log("MCP_USABILITY_BREAKDOWN:", {
-    stepsToFirstSuccess: signals.stepsToFirstSuccess,
-    hasDefaultContext: signals.hasDefaultContext,
-    clearToolDiscovery: signals.clearToolDiscovery,
-    sessionContinuityDetected: signals.sessionContinuityDetected,
-    authSessionScore,
-  })
-
-  console.log("MCP_CAPABILITY_BREAKDOWN:", {
-    readCoverage: signals.readCoverage,
-    writeCoverage: signals.writeCoverage,
-    toolCoverage: signals.toolCoverage,
-    semanticClarityScore: signals.semanticClarityScore,
-    actionabilityDetected: signals.actionabilityDetected,
-    actionabilityScore,
-    toolScore,
-  })
-
-  console.log("MCP_RELIABILITY_BREAKDOWN:", {
-    successRate: signals.successRate,
-    surfaceAuthenticityScore: signals.surfaceAuthenticityScore,
-    latencyScore: signals.latencyScore,
-    reliabilityScore,
-    confidence,
-  })
-
-  console.log("MCP_FINAL_DEBUG:", {
-    discoveryScore,
-    authSessionScore,
-    actionabilityScore,
-    toolScore,
-    publicApiContribution,
-    reliabilityScore,
-    confidence,
-    weightedScore,
+  console.log("MCP_BASELINE_DEBUG:", {
+    detectedPlatform: signals.detectedPlatform,
+    normalizedPlatform,
+    isKnownCommercePlatform,
     finalScore,
   })
 
-  const findings = [
-    signals.mcpEndpointDetected
-      ? "A structured agent protocol surface is exposed, which gives autonomous systems a clearer path to discover tools and workflows."
-      : signals.oauthDiscoveryDetected || signals.authenticatedApiDetected
-        ? "Authentication and protocol discovery signals exist, but operability still depends on how clearly tools and workflows are exposed."
-        : signals.publicApiDetected
-          ? "Some commerce APIs are exposed, but that alone does not yet indicate a strong autonomous agent operating surface."
-          : "No strong agent-facing protocol or workflow surface is confirmed from the sampled commerce ecosystem.",
-    toolScore >= 0.7
-      ? "Tool discovery and semantic clarity look strong enough for agents to identify what actions they can take."
-      : "Tool discovery still looks weak or ambiguous, so autonomous agents may struggle to understand the available workflows.",
-    actionabilityScore >= 0.7
-      ? "Transactional actions such as cart, checkout, or authenticated state transitions appear sufficiently exposed for agent execution."
-      : "Execution surfaces for cart, checkout, or stateful workflows are still too limited for reliable autonomous commerce actions.",
-    authSessionScore >= 0.7
-      ? "Authentication and session continuity signals suggest agents can maintain context across multi-step workflows."
-      : "Context continuity still looks fragile, which makes multi-step autonomous commerce flows harder to sustain safely.",
-  ]
+  const findings = isKnownCommercePlatform
+    ? [
+      "Detected platform is a known commerce backend, so MCP compatibility is temporarily assigned a fixed baseline score.",
+      "Endpoint/auth/workflow/tool heuristics are intentionally disabled in this temporary V1 scoring mode.",
+    ]
+    : [
+      "Detected platform is custom/unknown, so MCP compatibility remains 0 in temporary V1 scoring mode.",
+      "Endpoint/auth/workflow/tool heuristics are intentionally disabled in this temporary V1 scoring mode.",
+    ]
 
   return {
     name: "MCP Compatibility" as const,
@@ -2384,12 +3028,53 @@ function scoreMcp(signals: AuditSignals) {
     status: classify(finalScore),
     findings,
     impact:
-      "Strong agentic readiness means autonomous systems can discover capabilities, authenticate, preserve context, and execute commerce workflows reliably rather than merely read storefront data.",
+      "Temporary baseline score uses only detected platform maturity; deeper MCP operability checks are disabled until the next scoring revision.",
   }
+}
+
+function scoreHomepageGeoBaseline(signals: AuditSignals) {
+  // Homepage GEO baseline: scores discovery + merchant + search semantics.
+  // Product/Offer schema are NOT required here. They live on PDPs.
+  const breakdown = {
+    organizationContribution: signals.homepageHasOrganizationSchema ? 14 : 0,
+    websiteContribution: signals.homepageHasWebsiteSchema ? 10 : 0,
+    searchActionContribution: signals.homepageHasSearchAction ? 14 : 0,
+    breadcrumbsContribution: signals.homepageHasBreadcrumbs ? 8 : 0,
+    canonicalContribution: signals.homepageHasCanonical ? 8 : 0,
+    merchantTrustContribution: signals.merchantTrustScore * 14,
+    searchDiscoveryContribution: signals.searchDiscoveryScore * 12,
+    sitemapContribution: signals.sitemapFound ? 6 : 0,
+    robotsContribution: signals.robotsFound ? 4 : 0,
+    semanticReliabilityBonus: signals.semanticReliabilityScore * 6,
+    knowledgeGraphBonus: signals.knowledgeGraphScore * 4,
+  }
+
+  const total = Object.values(breakdown).reduce((sum, value) => sum + value, 0)
+  return { breakdown, total }
+}
+
+function scorePdpGeoSemantics(signals: AuditSignals) {
+  // PDP GEO: traditional product/offer/variant-driven semantic scoring.
+  const breakdown = {
+    productContribution: signals.productSchemaCompleteness * 35,
+    offerContribution: signals.offerSchemaCompleteness * 22,
+    semanticReliabilityContribution: signals.semanticReliabilityScore * 12,
+    merchantContribution: signals.merchantTrustScore * 8,
+    commerceActionabilityContribution: signals.commerceActionabilityScore * 8,
+    searchDiscoveryContribution: signals.searchDiscoveryScore * 5,
+    variantBonus: signals.variantSemanticScore * 4,
+    knowledgeGraphBonus: signals.knowledgeGraphScore * 3,
+    crossPageConsistencyBonus: signals.crossPageConsistencyScore * 2,
+    aiShoppingReadinessBonus: signals.aiShoppingReadinessScore * 2,
+  }
+  const total = Object.values(breakdown).reduce((sum, value) => sum + value, 0)
+  return { breakdown, total }
 }
 
 function scoreGeo(signals: AuditSignals) {
   console.log("GEO_SIGNALS:", {
+    pageType: signals.pageType,
+    homepageSemanticBaseline: signals.homepageSemanticBaseline,
     productSchemaCompleteness: signals.productSchemaCompleteness,
     offerSchemaCompleteness: signals.offerSchemaCompleteness,
     merchantTrustScore: signals.merchantTrustScore,
@@ -2400,100 +3085,170 @@ function scoreGeo(signals: AuditSignals) {
     searchDiscoveryScore: signals.searchDiscoveryScore,
     crossPageConsistencyScore: signals.crossPageConsistencyScore,
     aiShoppingReadinessScore: signals.aiShoppingReadinessScore,
+    homepageHasOrganizationSchema: signals.homepageHasOrganizationSchema,
+    homepageHasWebsiteSchema: signals.homepageHasWebsiteSchema,
+    homepageHasSearchAction: signals.homepageHasSearchAction,
+    homepageHasBreadcrumbs: signals.homepageHasBreadcrumbs,
+    homepageHasCanonical: signals.homepageHasCanonical,
+    sitemapFound: signals.sitemapFound,
+    robotsFound: signals.robotsFound,
   })
 
-  const geoBreakdown = {
-    productContribution: signals.productSchemaCompleteness * 0.35,
-offerContribution: signals.offerSchemaCompleteness * 0.25,
-semanticReliabilityContribution: signals.semanticReliabilityScore * 0.15,
-merchantContribution: signals.merchantTrustScore * 0.10,
-commerceActionabilityContribution: signals.commerceActionabilityScore * 0.10,
-searchDiscoveryContribution: signals.searchDiscoveryScore * 0.05,
+  const homepage = scoreHomepageGeoBaseline(signals)
+  const pdp = scorePdpGeoSemantics(signals)
 
-variantBonus: signals.variantSemanticScore * 0.03,
-knowledgeGraphBonus: signals.knowledgeGraphScore * 0.03,
-crossPageConsistencyBonus: signals.crossPageConsistencyScore * 0.02,
-aiShoppingReadinessBonus: signals.aiShoppingReadinessScore * 0.02,
+  const isHomepage = signals.pageType === "homepage"
+  const isPdp = signals.pageType === "pdp"
+  const hasMeaningfulHomepageSignals =
+    signals.homepageHasOrganizationSchema ||
+    signals.homepageHasWebsiteSchema ||
+    signals.homepageHasSearchAction ||
+    signals.homepageHasBreadcrumbs ||
+    signals.homepageHasCanonical ||
+    signals.sitemapFound ||
+    signals.robotsFound ||
+    signals.merchantTrustScore > 0.2 ||
+    signals.searchDiscoveryScore > 0.2
+
+  let weightedScore: number
+  let mode: "homepage_baseline" | "pdp_semantic" | "blended"
+
+  if (isHomepage) {
+    // Homepage: baseline drives the score; PDP signals only add a small uplift.
+    const pdpUplift = clampCoverage(
+      signals.productSchemaCompleteness * 0.6 +
+      signals.offerSchemaCompleteness * 0.4
+    ) * 12
+    weightedScore = homepage.total + pdpUplift
+    mode = "homepage_baseline"
+  } else if (isPdp) {
+    // PDP: traditional product/offer-heavy semantic scoring.
+    weightedScore = pdp.total
+    mode = "pdp_semantic"
+  } else {
+    // Category / unknown: blend, leaning on whichever side has more evidence.
+    const blendWeightPdp = signals.productPagesCount > 0 ? 0.7 : 0.4
+    weightedScore = pdp.total * blendWeightPdp + homepage.total * (1 - blendWeightPdp)
+    mode = "blended"
   }
 
-  const foundationScore =
-    geoBreakdown.productContribution +
-    geoBreakdown.offerContribution +
-    geoBreakdown.semanticReliabilityContribution +
-    geoBreakdown.merchantContribution +
-    geoBreakdown.commerceActionabilityContribution +
-    geoBreakdown.searchDiscoveryContribution
-
-  const maturityBonus =
-    geoBreakdown.variantBonus +
-    geoBreakdown.knowledgeGraphBonus +
-    geoBreakdown.crossPageConsistencyBonus +
-    geoBreakdown.aiShoppingReadinessBonus
-
-  console.log("GEO_BREAKDOWN:", geoBreakdown)
-
-  console.log("GEO_PENALTIES:", {
-    weakProductSchema: signals.productSchemaCompleteness < 0.7,
-    weakOfferSchema: signals.offerSchemaCompleteness < 0.7,
-    weakMerchantTrust: signals.merchantTrustScore < 0.6,
-    malformedOrUnreliableSchema: signals.semanticReliabilityScore < 0.7,
-    weakCommerceActions: signals.commerceActionabilityScore < 0.6,
-    weakSearchDiscovery: signals.searchDiscoveryScore < 0.6,
-    weakVariantsNonBlocking: signals.variantSemanticScore < 0.6,
-    disconnectedEntitiesNonBlocking: signals.knowledgeGraphScore < 0.6,
-    inconsistentSchemaNonBlocking: signals.crossPageConsistencyScore < 0.6,
-    weakAiShoppingReadinessNonBlocking: signals.aiShoppingReadinessScore < 0.6,
-  })
-
-  const score = clamp(
-    (foundationScore + maturityBonus) * 100
+  console.log("GEO_MODE:", mode)
+  console.log(
+    "GEO_INPUT:",
+    JSON.stringify(
+      {
+        pageType: signals.pageType,
+        productSchemaCompleteness: signals.productSchemaCompleteness,
+        offerSchemaCompleteness: signals.offerSchemaCompleteness,
+        semanticReliabilityScore: signals.semanticReliabilityScore,
+        merchantTrustScore: signals.merchantTrustScore,
+        variantSemanticScore: signals.variantSemanticScore,
+        commerceActionabilityScore: signals.commerceActionabilityScore,
+        searchDiscoveryScore: signals.searchDiscoveryScore,
+      },
+      null,
+      2
+    )
   )
+
+  // Floor: homepage audits should not collapse to ~0 when discovery signals exist.
+  const homepageFloor = hasMeaningfulHomepageSignals ? Math.min(25, Math.round(homepage.total)) : 0
+  if (isHomepage || mode === "blended") {
+    weightedScore = Math.max(weightedScore, homepageFloor)
+  }
+
+  const score = clamp(weightedScore)
   const status = classify(score)
 
+  console.log("GEO_BREAKDOWN:", {
+    mode,
+    homepage: homepage.breakdown,
+    homepageTotal: homepage.total,
+    pdp: pdp.breakdown,
+    pdpTotal: pdp.total,
+    homepageFloor,
+  })
+
+  console.log("GEO_PENALTIES:", {
+    homepageMissingOrgSchema: isHomepage && !signals.homepageHasOrganizationSchema,
+    homepageMissingWebsiteSchema: isHomepage && !signals.homepageHasWebsiteSchema,
+    homepageMissingSearchAction: isHomepage && !signals.homepageHasSearchAction,
+    homepageMissingBreadcrumbs: isHomepage && !signals.homepageHasBreadcrumbs,
+    homepageMissingCanonical: isHomepage && !signals.homepageHasCanonical,
+    pdpWeakProductSchema: !isHomepage && signals.productSchemaCompleteness < 0.7,
+    pdpWeakOfferSchema: !isHomepage && signals.offerSchemaCompleteness < 0.7,
+    pdpWeakMerchantTrust: !isHomepage && signals.merchantTrustScore < 0.6,
+    pdpMalformedOrUnreliableSchema: !isHomepage && signals.semanticReliabilityScore < 0.7,
+    pdpWeakVariants: isPdp && signals.variantSemanticScore < 0.6,
+  })
+
   console.log("GEO_FINAL_DEBUG:", {
-    foundationScore: foundationScore * 100,
-    maturityBonus: maturityBonus * 100,
-    weightedScore: (foundationScore + maturityBonus) * 100,
+    mode,
+    homepageBaseline: homepage.total,
+    pdpSemantic: pdp.total,
+    weightedScore,
     finalScore: score,
     status,
   })
 
   console.log("GEO_REASON:", {
     reason:
-      signals.productSchemaCompleteness < 0.7 && signals.offerSchemaCompleteness < 0.7
-        ? "Score is held back mainly by weak foundational Product and Offer schema coverage, which now drives most of GEO."
-        : signals.offerSchemaCompleteness < 0.7
-          ? "Score is held back mainly by incomplete offer schema, especially around price, availability, and machine-readable commerce context."
-          : signals.semanticReliabilityScore < 0.7
-            ? "Score reduced because structured commerce data still looks unreliable or inconsistent across the sampled catalog."
-            : signals.variantSemanticScore < 0.6 || signals.knowledgeGraphScore < 0.6
-              ? "Foundational schema is reasonably in place, but advanced semantic maturity signals are only adding a limited bonus."
-              : "Score is supported by strong foundational product and offer schema, with advanced semantic layers providing additional uplift.",
+      mode === "homepage_baseline"
+        ? hasMeaningfulHomepageSignals
+          ? "Score reflects homepage discovery + merchant trust signals; product/offer schema is intentionally not required at the homepage level."
+          : "Homepage GEO is weak because core discovery signals (Organization/WebSite/SearchAction/Breadcrumbs/canonical) are missing."
+        : mode === "pdp_semantic"
+          ? signals.productSchemaCompleteness < 0.7 || signals.offerSchemaCompleteness < 0.7
+            ? "PDP score is held back by incomplete Product/Offer schema, which is the core of PDP semantic readiness."
+            : "PDP score is supported by strong Product/Offer schema with reliable semantic structure."
+          : "Score reflects a blended view across discovery (homepage) and product semantics (PDP).",
   })
 
-  const findings = [
-    signals.productSchemaCompleteness >= 0.7
-      ? `Product schema is semantically rich across sampled pages (${Math.round(signals.productSchemaCompleteness * 100)}% completeness).`
-      : `Product schema remains incomplete or uneven (${Math.round(signals.productSchemaCompleteness * 100)}% completeness), so agents may miss key product meaning.`,
-    signals.offerSchemaCompleteness >= 0.7
-      ? `Offer schema exposes strong machine-readable pricing and availability context (${Math.round(signals.offerSchemaCompleteness * 100)}%).`
-      : `Offer intelligence is still thin (${Math.round(signals.offerSchemaCompleteness * 100)}%), which weakens price, inventory, and trust-aware buying guidance.`,
-    signals.variantSemanticScore >= 0.6
-      ? "Variant attributes and grouping signals are strong enough to support comparison and recommendation flows."
-      : "Variant semantics are still weak, so shopping agents may struggle with size, color, material, and product-family reasoning.",
-    signals.knowledgeGraphScore >= 0.6
-      ? "Schema entities are reasonably connected through brand, merchant, breadcrumb, review, and offer relationships."
-      : "The commerce graph still looks fragmented, which lowers confidence in multi-entity reasoning.",
-    signals.semanticReliabilityScore >= 0.7
-      ? "Structured data looks fairly reliable, with fewer signs of malformed or conflicting commerce entities."
-      : "Reliability issues such as malformed JSON-LD, disconnected entities, stale availability, or missing canonicals may reduce AI trust.",
-    signals.commerceActionabilityScore >= 0.6
-      ? "Machine-readable action surfaces are present, which helps agents move from understanding into execution."
-      : "Commerce actionability is limited, so the schema layer still reads better than it acts.",
-    signals.crossPageConsistencyScore >= 0.6
-      ? "Schema patterns look reasonably consistent across the sampled product pages."
-      : "Cross-page schema consistency is still uneven, which makes extraction and normalization less dependable at catalog scale.",
-  ]
+  const findings: string[] = []
+
+  if (mode === "homepage_baseline") {
+    findings.push(
+      signals.homepageHasOrganizationSchema || signals.homepageHasWebsiteSchema
+        ? "Homepage exposes Organization or WebSite schema, which gives AI a clear merchant identity anchor."
+        : "Homepage is missing Organization or WebSite schema, which weakens merchant identity for AI systems.",
+      signals.homepageHasSearchAction
+        ? "A SearchAction is declared, which lets agents query the catalog from the homepage."
+        : "No SearchAction is declared, so agents have no machine-readable search entry point.",
+      signals.homepageHasBreadcrumbs
+        ? "Breadcrumbs are present, which helps agents understand site structure."
+        : "Breadcrumbs are missing on the homepage; consider exposing site hierarchy for AI navigation.",
+      signals.homepageHasCanonical
+        ? "Canonical URL is set, which prevents duplicate-content confusion for AI crawlers."
+        : "Canonical URL is missing, which can confuse AI crawlers about the preferred URL.",
+      signals.sitemapFound && signals.robotsFound
+        ? "sitemap.xml and robots.txt are both present for crawl discoverability."
+        : !signals.sitemapFound
+          ? "sitemap.xml was not confirmed, which limits catalog discoverability for crawlers."
+          : "robots.txt was not confirmed, which limits crawl-policy clarity.",
+      "Product/Offer schema completeness is evaluated separately at PDP-level audits and does not penalize homepage scores here.",
+    )
+  } else {
+    findings.push(
+      signals.productSchemaCompleteness >= 0.7
+        ? `Product schema is semantically rich across sampled pages (${Math.round(signals.productSchemaCompleteness * 100)}% completeness).`
+        : `Product schema remains incomplete or uneven (${Math.round(signals.productSchemaCompleteness * 100)}% completeness), so agents may miss key product meaning.`,
+      signals.offerSchemaCompleteness >= 0.7
+        ? `Offer schema exposes strong machine-readable pricing and availability context (${Math.round(signals.offerSchemaCompleteness * 100)}%).`
+        : `Offer intelligence is still thin (${Math.round(signals.offerSchemaCompleteness * 100)}%), which weakens price, inventory, and trust-aware buying guidance.`,
+      signals.variantSemanticScore >= 0.6
+        ? "Variant attributes and grouping signals are strong enough to support comparison and recommendation flows."
+        : "Variant semantics are still weak, so shopping agents may struggle with size, color, material, and product-family reasoning.",
+      signals.knowledgeGraphScore >= 0.6
+        ? "Schema entities are reasonably connected through brand, merchant, breadcrumb, review, and offer relationships."
+        : "The commerce graph still looks fragmented, which lowers confidence in multi-entity reasoning.",
+      signals.semanticReliabilityScore >= 0.7
+        ? "Structured data looks fairly reliable, with fewer signs of malformed or conflicting commerce entities."
+        : "Reliability issues such as malformed JSON-LD, disconnected entities, stale availability, or missing canonicals may reduce AI trust.",
+      signals.commerceActionabilityScore >= 0.6
+        ? "Machine-readable action surfaces are present, which helps agents move from understanding into execution."
+        : "Commerce actionability is limited, so the schema layer still reads better than it acts.",
+    )
+  }
 
   return {
     name: "GEO / Smart JSON-LD / Schema" as const,
@@ -2501,7 +3256,9 @@ aiShoppingReadinessBonus: signals.aiShoppingReadinessScore * 0.02,
     status,
     findings,
     impact:
-      "This category measures AI-commerce semantic readiness: whether autonomous systems can reliably understand products, trust commerce facts, preserve relationships, and act on structured buying signals across the storefront.",
+      mode === "homepage_baseline"
+        ? "Homepage GEO measures whether AI systems can identify the merchant, discover the catalog, and find search/structure entry points—not whether every product page has perfect schema."
+        : "PDP GEO measures whether autonomous systems can understand individual products, trust pricing/availability, and act on structured buying signals.",
   }
 }
 
@@ -2595,6 +3352,22 @@ export async function runAudit(input: string | AuditInput): Promise<AuditReport>
   const derivedSignals = await deriveSignals(payload.url)
 
   const signals: AuditSignals = {
+    fetchBlockedDetected:
+      payload.signals?.fetchBlockedDetected ?? derivedSignals.fetchBlockedDetected,
+    pageType: payload.signals?.pageType ?? derivedSignals.pageType,
+    homepageSemanticBaseline: clampCoverage(
+      payload.signals?.homepageSemanticBaseline ?? derivedSignals.homepageSemanticBaseline
+    ),
+    homepageHasOrganizationSchema:
+      payload.signals?.homepageHasOrganizationSchema ?? derivedSignals.homepageHasOrganizationSchema,
+    homepageHasWebsiteSchema:
+      payload.signals?.homepageHasWebsiteSchema ?? derivedSignals.homepageHasWebsiteSchema,
+    homepageHasSearchAction:
+      payload.signals?.homepageHasSearchAction ?? derivedSignals.homepageHasSearchAction,
+    homepageHasBreadcrumbs:
+      payload.signals?.homepageHasBreadcrumbs ?? derivedSignals.homepageHasBreadcrumbs,
+    homepageHasCanonical:
+      payload.signals?.homepageHasCanonical ?? derivedSignals.homepageHasCanonical,
     sitemapFound: payload.signals?.sitemapFound ?? derivedSignals.sitemapFound,
     robotsFound: payload.signals?.robotsFound ?? derivedSignals.robotsFound,
     productPagesCount: payload.signals?.productPagesCount ?? derivedSignals.productPagesCount,

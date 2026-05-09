@@ -67,18 +67,22 @@ export default function LoadingPage() {
     let isActive = true
 
     const generateReport = async () => {
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => controller.abort(), 35000)
       try {
         const response = await fetch("/api/audit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url }),
+          signal: controller.signal,
         })
-        const data = await response.json()
+        const data = await response.json().catch(() => null)
         if (!isActive) return
-        sessionStorage.setItem("auditReport", JSON.stringify(data))
+        sessionStorage.setItem("auditReport", JSON.stringify(data ?? { error: "Audit response unreadable" }))
       } catch {
         if (!isActive) return
       } finally {
+        window.clearTimeout(timeoutId)
         if (isActive) {
           setReportReady(true)
         }
