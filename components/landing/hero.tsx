@@ -42,27 +42,27 @@ export function Hero({ onAnalyze, isLoading }: HeroProps) {
   }, [])
 
   return (
-    <section className="relative min-h-screen overflow-hidden pt-32 pb-20 lg:pt-40 lg:pb-32">
+    <section className="relative min-h-screen overflow-hidden pt-24 pb-16 sm:pt-28 sm:pb-20 lg:pt-40 lg:pb-32">
       {/* Background pattern */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_110%)]" />
 
-      <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="grid items-center gap-16 lg:grid-cols-2 lg:gap-24">
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid items-center gap-10 sm:gap-12 lg:grid-cols-2 lg:gap-24">
 
           {/* Left */}
           <div className="text-left">
-            <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 sm:mb-8 sm:px-4 sm:py-2">
               <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-              <span className="text-sm font-medium text-primary">
+              <span className="text-xs font-medium text-primary sm:text-sm">
                 Agentic Commerce Readiness
               </span>
             </div>
 
-            <h1 className="text-5xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
+            <h1 className="text-4xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-7xl">
               Are <span className="text-primary">AI shoppers</span> discovering your store?
             </h1>
 
-            <p className="mt-8 max-w-lg text-lg leading-relaxed text-muted-foreground lg:text-xl">
+            <p className="mt-6 max-w-lg text-base leading-relaxed text-muted-foreground sm:mt-8 sm:text-lg lg:text-xl">
               Find out if your store is discovered and understood by AI platforms like{" "}
               <span
                 key={aiSource.name}
@@ -78,7 +78,7 @@ export function Hero({ onAnalyze, isLoading }: HeroProps) {
               - in under <span className="text-primary">60 seconds.</span>
             </p>
 
-            <form onSubmit={handleSubmit} className="mt-10 max-w-md">
+            <form onSubmit={handleSubmit} className="mt-8 max-w-md sm:mt-10">
               <div className="space-y-4">
                 <Input
                   type="url"
@@ -111,8 +111,8 @@ export function Hero({ onAnalyze, isLoading }: HeroProps) {
           </div>
 
           {/* Right */}
-          <div className="relative hidden lg:block">
-            <div className="overflow-hidden rounded-2xl border border-border/60 bg-background/80 p-2 shadow-2xl">
+          <div className="relative mt-8 w-full md:mt-0">
+            <div className="mx-auto w-full max-w-xl overflow-hidden rounded-2xl border border-border/60 bg-background/80 p-2 shadow-2xl md:max-w-none">
               <Image
                 src="/hero-banner.png"
                 alt="AI commerce audit workflow visualization"

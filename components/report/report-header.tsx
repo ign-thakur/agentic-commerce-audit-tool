@@ -26,8 +26,8 @@ export function ReportHeader({ url }: ReportHeaderProps) {
 
   return (
     <header className="border-b border-border bg-background">
-      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-        <div className="flex items-center gap-6">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:h-20 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-0 lg:px-8">
+        <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-6">
           <Link href="/" className="flex items-center gap-2">
             <Image
               src="/logo.png"
@@ -40,13 +40,13 @@ export function ReportHeader({ url }: ReportHeaderProps) {
           </Link>
           {displayUrl && (
             <>
-              <div className="h-6 w-px bg-border" />
+              <div className="hidden h-6 w-px bg-border sm:block" />
               <a
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
                 title={url}
-                className="flex min-w-0 items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                className="flex max-w-full min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground transition-colors hover:text-primary sm:max-w-[32rem] sm:text-sm"
               >
                 <span className="truncate">{displayUrl}</span>
                 <ExternalLink className="h-3.5 w-3.5 shrink-0" />
@@ -54,8 +54,8 @@ export function ReportHeader({ url }: ReportHeaderProps) {
             </>
           )}
         </div>
-        <Link href="/">
-          <Button variant="outline" size="sm" className="gap-2 border-border hover:bg-primary hover:text-primary-foreground hover:border-primary">
+        <Link href="/" className="w-full sm:w-auto">
+          <Button variant="outline" size="sm" className="w-full gap-2 border-border hover:bg-primary hover:text-primary-foreground hover:border-primary sm:w-auto">
             <ArrowLeft className="h-4 w-4" />
             New Audit
           </Button>

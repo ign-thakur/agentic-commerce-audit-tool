@@ -49,12 +49,6 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
     return "text-red-500"
   }
 
-  const getStrokeColor = (s: number) => {
-    if (s >= 80) return "stroke-primary"
-    if (s >= 60) return "stroke-amber-500"
-    return "stroke-red-500"
-  }
-
   const getScoreLabel = (s: number) => {
     if (s >= 80) return "High AI Readiness"
     if (s >= 60) return "Emerging AI Readiness"
@@ -77,11 +71,11 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
         : "border-rose-200/70 bg-rose-50/70"
 
   return (
-    <div className={`h-full rounded-[32px] border p-8 shadow-[0_20px_60px_rgba(15,23,42,0.08)] lg:p-10 ${backgroundClass}`}>
-      <div className="mb-8 flex items-start justify-between gap-4">
+    <div className={`h-full rounded-[24px] border p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:rounded-[28px] sm:p-6 lg:rounded-[32px] lg:p-10 ${backgroundClass}`}>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3 sm:mb-8 sm:gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">AI Audit Score</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-foreground lg:text-5xl">AI Commerce Readiness</h2>
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-foreground sm:mt-3 sm:text-3xl lg:text-5xl">AI Commerce Readiness</h2>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${
           normalizedStatus === "strong"
@@ -94,12 +88,12 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
         </span>
       </div>
       
-      <div className="grid items-center gap-8 lg:grid-cols-[1.08fr_0.92fr]">
-        <div className="rounded-[28px] border border-border/70 bg-background/70 p-8">
-          <div className="grid items-center gap-8 lg:grid-cols-[220px_1fr]">
+      <div className="grid items-center gap-5 sm:gap-8 lg:grid-cols-[1.08fr_0.92fr]">
+        <div className="rounded-[20px] border border-border/70 bg-background/70 p-4 sm:rounded-[24px] sm:p-6 lg:rounded-[28px] lg:p-8">
+          <div className="grid items-center gap-6 sm:gap-8 lg:grid-cols-[220px_1fr]">
             <div className="mx-auto">
               <div
-                className="relative flex h-56 w-56 items-center justify-center rounded-full"
+                className="relative flex h-40 w-40 items-center justify-center rounded-full sm:h-56 sm:w-56"
                 style={{
                   background: `conic-gradient(currentColor ${animatedScore * 3.6}deg, rgba(148,163,184,0.14) 0deg)`,
                   color:
@@ -109,10 +103,10 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
                 <div className="absolute inset-[10px] rounded-full bg-white/95" />
                 <div className="relative flex flex-col items-center justify-center">
                   <div className="flex items-end gap-2 leading-none">
-                    <span className={`text-6xl font-bold ${getScoreColor(score)}`}>{animatedScore}</span>
-                    <span className="pb-2 text-lg font-semibold text-muted-foreground">/100</span>
+                    <span className={`text-4xl font-bold sm:text-6xl ${getScoreColor(score)}`}>{animatedScore}</span>
+                    <span className="pb-1 text-base font-semibold text-muted-foreground sm:pb-2 sm:text-lg">/100</span>
                   </div>
-                  <span className="mt-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  <span className="mt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground sm:mt-4 sm:text-[11px]">
                     Overall Score
                   </span>
                 </div>
@@ -124,7 +118,7 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Score Signal
                 </p>
-                <p className="mt-3 text-xl font-semibold leading-snug text-foreground">
+                <p className="mt-2 text-lg font-semibold leading-snug text-foreground sm:mt-3 sm:text-xl">
                   {score >= 70
                     ? "Your storefront is showing strong AI-readiness signals."
                     : score >= 40
@@ -134,7 +128,7 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <span className={`rounded-full px-4 py-2 text-sm font-medium ${
+                <span className={`rounded-full px-3 py-1.5 text-xs font-medium sm:px-4 sm:py-2 sm:text-sm ${
                   score >= 80
                     ? "bg-primary/10 text-primary"
                     : score >= 60
@@ -143,7 +137,7 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
                 }`}>
                   {getScoreLabel(score)}
                 </span>
-                <span className="rounded-full border-2 border-primary/20 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary shadow-[0_8px_24px_rgba(13,148,136,0.10)]">
+                <span className="rounded-full border-2 border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary shadow-[0_8px_24px_rgba(13,148,136,0.10)] sm:px-4 sm:py-2 sm:text-sm">
                   Platform: {platformLabel}
                 </span>
               </div>
@@ -152,12 +146,12 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
         </div>
 
         <div className="grid gap-4">
-          <div className={`rounded-[28px] border p-6 ${accentPanelClass}`}>
+          <div className={`rounded-[20px] border p-4 sm:rounded-[24px] sm:p-5 lg:rounded-[28px] lg:p-6 ${accentPanelClass}`}>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Platform Readiness
             </p>
             
-            <p className="mt-3 text-lg font-semibold leading-snug text-foreground">
+            <p className="mt-2 text-base font-semibold leading-snug text-foreground sm:mt-3 sm:text-lg">
               {platformLabel === "KartmaX"
                 ? "The detected platform gives you a stronger commerce integration base."
                 : platformLabel === "Shopify"
@@ -170,9 +164,9 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
             </p>
           </div>
 
-          <div className="rounded-[24px] border border-border/70 bg-background/70 p-5">
+          <div className="rounded-[20px] border border-border/70 bg-background/70 p-4 sm:rounded-[24px] sm:p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Status Outlook</p>
-            <p className="mt-3 text-lg font-semibold leading-snug text-foreground capitalize">
+            <p className="mt-2 text-base font-semibold leading-snug text-foreground capitalize sm:mt-3 sm:text-lg">
               {normalizedStatus} readiness with the biggest gaps still concentrated in your weaker categories.
             </p>
           </div>

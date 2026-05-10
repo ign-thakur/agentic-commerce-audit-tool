@@ -22,23 +22,22 @@ export function CTASection({ onAnalyze, isLoading }: CTASectionProps) {
   }
 
   return (
-    <section className="py-24 lg:py-32 bg-primary">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-24">
+    <section className="bg-primary py-16 sm:py-20 lg:py-32">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid items-center gap-10 sm:gap-12 lg:grid-cols-2 lg:gap-24">
           {/* Text */}
           <div>
-            <h2 className="text-4xl font-bold tracking-tight text-primary-foreground lg:text-5xl">
+            <h2 className="text-3xl font-bold tracking-tight text-primary-foreground sm:text-4xl lg:text-5xl">
               Ready to optimize
-              <br />
-              for AI commerce?
+              <span className="block sm:inline"> for AI commerce?</span>
             </h2>
-            <p className="mt-6 text-lg text-primary-foreground/80">
+            <p className="mt-4 text-base text-primary-foreground/80 sm:mt-6 sm:text-lg">
               Get your free AI readiness report and start improving today. No credit card required.
             </p>
           </div>
 
           {/* Form */}
-          <div className="rounded-2xl bg-background p-8 shadow-2xl">
+          <div className="rounded-2xl bg-background p-5 shadow-2xl sm:p-8">
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 type="url"

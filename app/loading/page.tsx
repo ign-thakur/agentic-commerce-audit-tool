@@ -139,25 +139,25 @@ export default function LoadingPage() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f7fafc_0%,#ffffff_25%,#ffffff_100%)]">
       <header className="border-b border-border bg-background/95 backdrop-blur-sm">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:h-20 sm:px-6 sm:py-0 lg:px-8">
           <Image
             src="/logo.png"
             alt="GreenHonchos"
             width={170}
             height={38}
-            className="h-9 w-auto"
+            className="h-8 w-auto sm:h-9"
             unoptimized
           />
-          <span className="rounded-full border border-primary/20 bg-primary/5 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+          <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary sm:px-4 sm:py-2 sm:text-xs sm:tracking-[0.16em]">
             Audit in progress
           </span>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-6 py-10 lg:px-8 lg:py-12">
-        <div className="rounded-[32px] border border-border bg-background p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] lg:p-10">
+      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+        <div className="rounded-[24px] border border-border bg-background p-4 shadow-[0_20px_70px_rgba(15,23,42,0.08)] sm:rounded-[32px] sm:p-6 lg:p-10">
           <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-start">
-            <div className="rounded-[28px] border border-border bg-muted/30 p-6">
+            <div className="rounded-[20px] border border-border bg-muted/30 p-4 sm:rounded-[28px] sm:p-6">
               <div className="relative mx-auto flex h-40 w-40 items-center justify-center">
                 <svg className="h-40 w-40 -rotate-90 transform">
                   <circle
@@ -182,7 +182,7 @@ export default function LoadingPage() {
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-5xl font-bold tracking-tight text-foreground">{progress}</span>
+                  <span className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">{progress}</span>
                   <span className="mt-1 text-sm text-muted-foreground">/100</span>
                 </div>
               </div>
@@ -197,21 +197,21 @@ export default function LoadingPage() {
 
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/90">AI Commerce Audit</p>
-              <h1 className="mt-3 max-w-2xl text-4xl font-bold tracking-tight text-foreground lg:text-5xl">
+              <h1 className="mt-3 max-w-2xl text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
                 Analyzing your storefront
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">
                 We are checking how easily AI systems can discover, understand, and act on your commerce experience.
               </p>
 
-              <div className="mt-8 rounded-[28px] border border-border bg-background p-6 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
+              <div className="mt-6 rounded-[20px] border border-border bg-background p-4 shadow-sm sm:mt-8 sm:rounded-[28px] sm:p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/90">Current Stage</p>
-                    <h2 className="mt-2 text-2xl font-bold text-foreground">{currentStage.title}</h2>
+                    <h2 className="mt-2 text-xl font-bold text-foreground sm:text-2xl">{currentStage.title}</h2>
                     <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{currentStage.detail}</p>
                   </div>
-                  <div className="mt-1 rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
+                  <div className="w-fit rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
                     {currentStage.label}
                   </div>
                 </div>
@@ -232,7 +232,7 @@ export default function LoadingPage() {
             </div>
           </div>
 
-          <div className="mt-8 rounded-[28px] border border-border bg-muted/20 p-5">
+          <div className="mt-6 rounded-[20px] border border-border bg-muted/20 p-4 sm:mt-8 sm:rounded-[28px] sm:p-5">
             <div className="mb-4 flex items-center gap-3">
               <Sparkles className="h-4 w-4 text-primary" />
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Audit Timeline</p>
@@ -258,8 +258,8 @@ export default function LoadingPage() {
                     ) : (
                       <div className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
                     )}
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{stage.label}</p>
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium text-foreground">{stage.label}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {stage.completed ? "Completed" : stage.active ? "In progress" : "Queued"}
                       </p>

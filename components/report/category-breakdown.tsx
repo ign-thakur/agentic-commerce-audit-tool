@@ -35,7 +35,7 @@ export function CategoryBreakdown({ categories }: CategoryBreakdownProps) {
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-background p-8 shadow-sm">
+    <div className="rounded-2xl border border-border bg-background p-4 shadow-sm sm:p-6 lg:p-8">
       <div className="mb-6">
         <h2 className="text-base font-bold uppercase tracking-[0.2em] text-muted-foreground">
           Breakdown
@@ -52,23 +52,23 @@ export function CategoryBreakdown({ categories }: CategoryBreakdownProps) {
           return (
             <div
               key={category.name}
-              className={`px-5 py-5 ${index !== sortedCategories.length - 1 ? "border-b border-border/70" : ""}`}
+              className={`px-4 py-4 sm:px-5 sm:py-5 ${index !== sortedCategories.length - 1 ? "border-b border-border/70" : ""}`}
             >
-              <div className="flex flex-col gap-4 text-left">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-                      <Icon className="h-5 w-5 text-foreground" />
-                    </div>
-                    <h3 className="text-base font-semibold text-foreground">{category.name}</h3>
+              <div className="flex flex-col gap-3 text-left sm:gap-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+                    <Icon className="h-5 w-5 text-foreground" />
                   </div>
+                  <h3 className="min-w-0 break-words text-sm font-semibold leading-snug text-foreground sm:text-base">
+                    {category.name}
+                  </h3>
+                </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold tabular-nums text-foreground">{category.score}/100</span>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${getStatusColor(category.status)}`}>
-                      {category.status}
-                    </span>
-                  </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-bold tabular-nums text-foreground">{category.score}/100</div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${getStatusColor(category.status)}`}>
+                    {category.status}
+                  </span>
                 </div>
 
                 <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
