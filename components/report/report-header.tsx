@@ -8,13 +8,21 @@ interface ReportHeaderProps {
 }
 
 export function ReportHeader({ url }: ReportHeaderProps) {
-  const displayUrl = url ? (() => {
-    try {
-      return new URL(url).hostname
-    } catch {
-      return url
-    }
-  })() : ""
+  const displayUrl = url
+    ? (() => {
+        let normalized = url.trim()
+
+        try {
+          const parsed = new URL(url)
+          normalized = `${parsed.hostname}${parsed.pathname}${parsed.search}`
+        } catch {
+          normalized = normalized.replace(/^https?:\/\//i, "")
+        }
+
+        const MAX_LEN = 50
+        return normalized.length > MAX_LEN ? `${normalized.slice(0, MAX_LEN)}...` : normalized
+      })()
+    : ""
 
   return (
     <header className="border-b border-border bg-background">
@@ -37,10 +45,11 @@ export function ReportHeader({ url }: ReportHeaderProps) {
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+                title={url}
+                className="flex min-w-0 items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
               >
-                {displayUrl}
-                <ExternalLink className="h-3.5 w-3.5" />
+                <span className="truncate">{displayUrl}</span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
               </a>
             </>
           )}

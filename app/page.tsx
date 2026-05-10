@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Hero } from "@/components/landing/hero"
-import { SocialProof } from "@/components/landing/social-proof"
 import { HowItWorks } from "@/components/landing/how-it-works"
 import { Features } from "@/components/landing/features"
 import { CTASection } from "@/components/landing/cta-section"
@@ -42,7 +41,6 @@ export default function LandingPage() {
       <Header />
       <main>
         <Hero onAnalyze={handleAnalyze} isLoading={isLoading} />
-        <SocialProof />
         <HowItWorks />
         <Features />
         <CTASection onAnalyze={handleAnalyze} isLoading={isLoading} />

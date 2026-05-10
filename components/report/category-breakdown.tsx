@@ -37,9 +37,12 @@ export function CategoryBreakdown({ categories }: CategoryBreakdownProps) {
   return (
     <div className="rounded-2xl border border-border bg-background p-8 shadow-sm">
       <div className="mb-6">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
+        <h2 className="text-base font-bold uppercase tracking-[0.2em] text-muted-foreground">
           Breakdown
         </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Category-level readiness snapshot from weakest to strongest.
+        </p>
       </div>
 
       <div className="rounded-2xl border border-border/70">

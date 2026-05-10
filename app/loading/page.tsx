@@ -137,144 +137,140 @@ export default function LoadingPage() {
   )
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#07111a] px-6 text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.12),transparent_26%)]" />
-      <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:48px_48px]" />
-
-      <div className="relative w-full max-w-3xl rounded-[32px] border border-white/10 bg-white/6 p-8 shadow-[0_24px_90px_rgba(0,0,0,0.45)] backdrop-blur-xl lg:p-10">
-        <div className="mb-10 flex items-center justify-between gap-6">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#f7fafc_0%,#ffffff_25%,#ffffff_100%)]">
+      <header className="border-b border-border bg-background/95 backdrop-blur-sm">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
           <Image
             src="/logo.png"
             alt="GreenHonchos"
             width={170}
             height={38}
-            className="h-9 w-auto brightness-0 invert"
+            className="h-9 w-auto"
             unoptimized
           />
+          <span className="rounded-full border border-primary/20 bg-primary/5 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            Audit in progress
+          </span>
         </div>
+      </header>
 
-        <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
-          <div className="rounded-[28px] border border-white/10 bg-black/15 p-6">
-            <div className="relative mx-auto flex h-40 w-40 items-center justify-center">
-              <svg className="h-40 w-40 -rotate-90 transform">
-                <circle
-                  cx="80"
-                  cy="80"
-                  r="68"
-                  stroke="currentColor"
-                  strokeWidth="10"
-                  fill="none"
-                  className="text-white/10"
-                />
-                <circle
-                  cx="80"
-                  cy="80"
-                  r="68"
-                  strokeWidth="10"
-                  fill="none"
-                  strokeDasharray={427}
-                  strokeDashoffset={427 - (427 * progress) / 100}
-                  strokeLinecap="round"
-                  className="stroke-emerald-400 transition-all duration-500"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-5xl font-semibold tracking-tight">{progress}</span>
-                <span className="mt-1 text-sm text-white/55">/100</span>
-              </div>
-            </div>
-
-            <div className="mt-6 text-center">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300/90">
-                Audit In Progress
-              </p>
-              <p className="mt-3 text-sm leading-relaxed text-white/68">
-                We are generating a store-specific AI commerce readiness report.
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300/90">
-              AI Commerce Audit
-            </p>
-            <h1 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight lg:text-5xl">
-              Analyzing your storefront
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/72">
-              We are checking how easily AI systems can discover, understand, and act on your commerce experience.
-            </p>
-
-            <div className="mt-8 rounded-[28px] border border-white/10 bg-black/15 p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/90">
-                    Current Stage
-                  </p>
-                  <h2 className="mt-2 text-xl font-semibold text-white">{currentStage.title}</h2>
-                  <p className="mt-3 text-sm leading-relaxed text-white/62">{currentStage.detail}</p>
-                </div>
-                <div className="mt-1 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-300">
-                  {currentStage.label}
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <div className="mb-3 flex items-center justify-between text-sm text-white/55">
-                  <span>Audit progress</span>
-                  <span>{remainingSeconds > 0 ? `~${remainingSeconds}s remaining` : "Finalizing report"}</span>
-                </div>
-                <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,#34d399_0%,#10b981_50%,#14b8a6_100%)] transition-all duration-500"
-                    style={{ width: `${progress}%` }}
+      <main className="mx-auto w-full max-w-7xl px-6 py-10 lg:px-8 lg:py-12">
+        <div className="rounded-[32px] border border-border bg-background p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] lg:p-10">
+          <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-start">
+            <div className="rounded-[28px] border border-border bg-muted/30 p-6">
+              <div className="relative mx-auto flex h-40 w-40 items-center justify-center">
+                <svg className="h-40 w-40 -rotate-90 transform">
+                  <circle
+                    cx="80"
+                    cy="80"
+                    r="68"
+                    stroke="currentColor"
+                    strokeWidth="10"
+                    fill="none"
+                    className="text-muted"
                   />
+                  <circle
+                    cx="80"
+                    cy="80"
+                    r="68"
+                    strokeWidth="10"
+                    fill="none"
+                    strokeDasharray={427}
+                    strokeDashoffset={427 - (427 * progress) / 100}
+                    strokeLinecap="round"
+                    className="stroke-primary transition-all duration-500"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-5xl font-bold tracking-tight text-foreground">{progress}</span>
+                  <span className="mt-1 text-sm text-muted-foreground">/100</span>
                 </div>
               </div>
+
+              <div className="mt-6 text-center">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/90">Audit In Progress</p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  We are generating a store-specific AI commerce readiness report.
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className="mt-8 rounded-[28px] border border-white/10 bg-black/10 p-5">
-          <div className="mb-4 flex items-center gap-3">
-            <Sparkles className="h-4 w-4 text-emerald-300" />
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/65">
-              Audit Timeline
-            </p>
-          </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/90">AI Commerce Audit</p>
+              <h1 className="mt-3 max-w-2xl text-4xl font-bold tracking-tight text-foreground lg:text-5xl">
+                Analyzing your storefront
+              </h1>
+              <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">
+                We are checking how easily AI systems can discover, understand, and act on your commerce experience.
+              </p>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {stageDots.map((stage) => (
-              <div
-                key={stage.id}
-                className={`rounded-2xl border px-4 py-3 transition-all duration-300 ${
-                  stage.completed
-                    ? "border-emerald-300/25 bg-emerald-400/10"
-                    : stage.active
-                      ? "border-white/20 bg-white/8"
-                      : "border-white/8 bg-white/4 opacity-60"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  {stage.completed ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                  ) : stage.active ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
-                  ) : (
-                    <div className="h-2.5 w-2.5 rounded-full bg-white/30" />
-                  )}
+              <div className="mt-8 rounded-[28px] border border-border bg-background p-6 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-medium text-white">{stage.label}</p>
-                    <p className="mt-0.5 text-xs text-white/50">
-                      {stage.completed ? "Completed" : stage.active ? "In progress" : "Queued"}
-                    </p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/90">Current Stage</p>
+                    <h2 className="mt-2 text-2xl font-bold text-foreground">{currentStage.title}</h2>
+                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{currentStage.detail}</p>
+                  </div>
+                  <div className="mt-1 rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
+                    {currentStage.label}
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <div className="mb-3 flex items-center justify-between text-sm text-muted-foreground">
+                    <span>Audit progress</span>
+                    <span>{remainingSeconds > 0 ? `~${remainingSeconds}s remaining` : "Finalizing report"}</span>
+                  </div>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,#14b8a6_0%,#0d9488_60%,#0f766e_100%)] transition-all duration-500"
+                      style={{ width: `${progress}%` }}
+                    />
                   </div>
                 </div>
               </div>
-            ))}
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-[28px] border border-border bg-muted/20 p-5">
+            <div className="mb-4 flex items-center gap-3">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Audit Timeline</p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {stageDots.map((stage) => (
+                <div
+                  key={stage.id}
+                  className={`rounded-2xl border px-4 py-3 transition-all duration-300 ${
+                    stage.completed
+                      ? "border-primary/20 bg-primary/10"
+                      : stage.active
+                        ? "border-border bg-background"
+                        : "border-border bg-background/50 opacity-70"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    {stage.completed ? (
+                      <CheckCircle2 className="h-4 w-4 text-primary" />
+                    ) : stage.active ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    ) : (
+                      <div className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
+                    )}
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{stage.label}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {stage.completed ? "Completed" : stage.active ? "In progress" : "Queued"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }

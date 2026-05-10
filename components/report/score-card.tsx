@@ -77,11 +77,11 @@ export function ScoreCard({ score, status, categories }: ScoreCardProps) {
         : "border-rose-200/70 bg-rose-50/70"
 
   return (
-    <div className={`h-full rounded-[32px] border p-10 shadow-[0_20px_60px_rgba(15,23,42,0.08)] ${backgroundClass}`}>
+    <div className={`h-full rounded-[32px] border p-8 shadow-[0_20px_60px_rgba(15,23,42,0.08)] lg:p-10 ${backgroundClass}`}>
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">AI Audit Score</p>
-          <h2 className="mt-3 text-3xl font-bold tracking-tight text-foreground lg:text-4xl">AI Commerce Readiness</h2>
+          <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-foreground lg:text-5xl">AI Commerce Readiness</h2>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${
           normalizedStatus === "strong"
